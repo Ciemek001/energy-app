@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
-from app.db.crud_building_parameters import crud_building_params
+from app.crud.crud_building_parameters import crud_building_params
 from app.schemas.building_parameters import BuildingParametersCreate, BuildingParametersOut
 
 router = APIRouter(prefix="/building-parameters", tags=["Building Parameters"])

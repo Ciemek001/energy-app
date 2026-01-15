@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
-from app.db.crud_calculation import crud_calculation
+from app.crud.crud_calculation import crud_calculation
 from app.schemas.calculation import CalculationCreate, CalculationOut
 
 router = APIRouter(prefix="/calculations", tags=["Calculations"])

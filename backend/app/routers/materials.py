@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
-from app.db.crud_material import crud_material
+from app.crud.crud_material import crud_material
 from app.schemas.material import MaterialCreate, MaterialOut
 
 router = APIRouter(prefix="/materials", tags=["Materials"])

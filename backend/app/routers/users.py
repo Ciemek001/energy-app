@@ -38,7 +38,7 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
         )
 
     # 1. Stwórz użytkownika (domyślnie is_active=False w modelu)
-    new_user = crud_user.create(db=db, obj_in=user)
+    new_user = crud_user.create(db, user)
     
     # 2. Wygeneruj token i wyślij maila (to zostaje asynchroniczne)
     token = generate_verification_token(new_user.email)

@@ -1,4 +1,7 @@
 import os
+os.environ['HOME'] = 'C:\\'
+os.environ['USERPROFILE'] = 'C:\\'
+os.environ['PGPASSFILE'] = 'C:\\pgpass.conf'
 from dotenv import load_dotenv
 
 # Wczytaj zmienne z pliku .env

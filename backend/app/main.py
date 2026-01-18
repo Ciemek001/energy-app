@@ -1,3 +1,9 @@
+import os
+from dotenv import load_dotenv
+
+# Wczytaj zmienne z pliku .env
+load_dotenv()
+
 from fastapi import FastAPI
 from app.routers import (
     users,

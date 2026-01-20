@@ -1,5 +1,6 @@
-// frontend/src/Login.tsx
+// frontend/src/views/Login.tsx
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Box,
   Card,
@@ -10,23 +11,58 @@ import {
   Stack,
   Fade,
   Divider,
+  Alert
 } from "@mui/material";
 import LockIcon from "@mui/icons-material/Lock";
-import { useNavigate } from "react-router-dom";
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = () => {
-    // Tutaj w przyszłości podłącz fetch/axios do backendu
-    // Tymczasowo przekierowanie do ModeSelection
-    navigate("/mode-selection");
-  };
+  const handleLogin = async () => {
+    setError("");
+    setLoading(true);
 
-  const handleRegister = () => {
-    alert("Przejście do rejestracji (do zaimplementowania)");
+    try {
+      console.log("Wysyłanie danych:", { email, password }); // Logowanie wysyłanych danych
+
+      const response = await fetch("http://localhost:8000/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+      console.log("Odpowiedź serwera:", data); // Logowanie odpowiedzi
+
+      if (response.ok) {
+        // Sukces
+        localStorage.setItem("token", data.access_token);
+        navigate("/mode-selection");
+      } else {
+        // Obsługa błędów
+        if (response.status === 422) {
+            // Specjalna obsługa błędu walidacji (422)
+            // Backend zwraca tablicę błędów w 'detail'
+            if (Array.isArray(data.detail)) {
+                 const msgs = data.detail.map((err: any) => err.msg).join(", ");
+                 setError("Błąd danych: " + msgs);
+            } else {
+                 setError(data.detail || "Nieprawidłowe dane (format)");
+            }
+        } else {
+            setError(data.detail || "Błąd logowania");
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Brak połączenia z serwerem");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -42,21 +78,20 @@ const LoginPage: React.FC = () => {
       }}
     >
       <Fade in timeout={700}>
-        <Card
-          elevation={8}
-          sx={{
-            width: "100%",
-            maxWidth: 400,
-            borderRadius: 3,
-            overflow: "visible",
-          }}
-        >
+        <Card elevation={8} sx={{ width: "100%", maxWidth: 400, borderRadius: 3 }}>
           <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
             <Stack spacing={3} alignItems="center">
               <LockIcon sx={{ fontSize: 56, color: "#0277bd" }} />
               <Typography variant="h5" component="h1">
                 Logowanie
               </Typography>
+
+              {error && (
+                <Alert severity="error" sx={{ width: "100%" }}>
+                  {error}
+                </Alert>
+              )}
+
               <TextField
                 label="Email"
                 variant="outlined"
@@ -71,6 +106,7 @@ const LoginPage: React.FC = () => {
                 fullWidth
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
               />
 
               <Button
@@ -78,8 +114,9 @@ const LoginPage: React.FC = () => {
                 color="primary"
                 fullWidth
                 onClick={handleLogin}
+                disabled={loading}
               >
-                Zaloguj się
+                {loading ? "Logowanie..." : "Zaloguj się"}
               </Button>
 
               <Divider sx={{ width: "80%" }} />
@@ -88,7 +125,7 @@ const LoginPage: React.FC = () => {
                 variant="outlined"
                 color="secondary"
                 fullWidth
-                onClick={handleRegister}
+                onClick={() => navigate("/register")}
               >
                 Załóż konto
               </Button>

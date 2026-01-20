@@ -1,80 +1,74 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+# backend/app/routers/users.py
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
-from app.db.session import get_db
-from app.crud.crud_user import crud_user
+from app.db.database import get_db
+from app.models.user import User
 from app.schemas.user import UserCreate, UserOut
-from app.utils.security import generate_verification_token, verify_token
-from app.utils.email import send_verification_email
+from app.utils.security import get_password_hash, generate_verification_token, verify_token
+from app.utils.email import send_verification_email # Zakładam, że plik email.py jest w app/email.py
+from app.dependencies import get_current_user
 
-router = APIRouter(prefix="/users", tags=["Users"])
+router = APIRouter(
+    prefix="/users",
+    tags=["users"]
+)
 
-
-@router.get("/", response_model=list[UserOut])
-def get_users(db: Session = Depends(get_db)):
-    # Usunięto await, zmieniono AsyncSession na Session
-    return crud_user.get_multi(db)
-
-
-@router.get("/{user_id}", response_model=UserOut)
-def get_user(user_id: int, db: Session = Depends(get_db)):
-    # Usunięto await, zmieniono AsyncSession na Session
-    user = crud_user.get(db, id=user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Użytkownik nie został znaleziony"
-        )
-    return user
-
-
-@router.post("/", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    # Sprawdzenie czy mail jest zajęty
-    db_user = crud_user.get_by_email(db, email=user.email)
+@router.post("/", response_model=UserOut)
+async def create_user(
+    user: UserCreate, 
+    background_tasks: BackgroundTasks, # Używamy zadań w tle do wysyłki maila (szybciej dla usera)
+    db: Session = Depends(get_db)
+):
+    # 1. Sprawdź czy użytkownik istnieje
+    db_user = db.query(User).filter(User.email == user.email).first()
     if db_user:
-        raise HTTPException(
-            status_code=400,
-            detail="Użytkownik o tym adresie e-mail już istnieje."
-        )
+        raise HTTPException(status_code=400, detail="Ten email jest już zarejestrowany.")
 
-    # 1. Stwórz użytkownika (domyślnie is_active=False w modelu)
-    new_user = crud_user.create(db, user)
+    # 2. Hashowanie hasła
+    hashed_pwd = get_password_hash(user.password)
+
+    # 3. Tworzenie użytkownika (domyślnie nieaktywny)
+    new_user = User(
+        email=user.email,
+        hashed_password=hashed_pwd,
+        role=user.role if user.role else "user",
+        is_active=False # Musi potwierdzić maila
+    )
     
-    # 2. Wygeneruj token i wyślij maila (to zostaje asynchroniczne)
-    token = generate_verification_token(new_user.email)
-    try:
-        await send_verification_email(new_user.email, token)
-    except Exception as e:
-        # Opcjonalnie: logowanie błędu wysyłki maila
-        print(f"Błąd wysyłki maila: {e}")
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    # 4. Generowanie tokena i wysyłka maila w tle
+    verification_token = generate_verification_token(new_user.email)
     
+    # Uwaga: background_tasks wymaga aby funkcja send_verification_email była async lub zwykła
+    # Jeśli w email.py masz async def, użyjemy await w wrapperze lub przekażemy bezpośrednio
+    background_tasks.add_task(send_verification_email, new_user.email, verification_token)
+
     return new_user
-
 
 @router.get("/verify/{token}")
 def verify_user_email(token: str, db: Session = Depends(get_db)):
-    # Dekodowanie maila z tokena
     email = verify_token(token)
     if not email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="Nieprawidłowy lub wygasły token"
-        )
+        raise HTTPException(status_code=400, detail="Nieprawidłowy lub wygasły link aktywacyjny.")
     
-    # Pobranie użytkownika
-    user = crud_user.get_by_email(db, email=email)
+    user = db.query(User).filter(User.email == email).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Użytkownik nie istnieje"
-        )
-        
+        raise HTTPException(status_code=404, detail="Użytkownik nie znaleziony.")
+    
     if user.is_active:
         return {"message": "Konto jest już aktywne."}
 
-    # Aktywacja konta
     user.is_active = True
-    db.add(user)
     db.commit()
-    
-    return {"message": "Konto zostało aktywowane pomyślnie!"}
+    return {"message": "Konto zostało pomyślnie aktywowane! Możesz się teraz zalogować."}
+
+@router.get("/me", response_model=UserOut)
+def read_users_me(current_user: User = Depends(get_current_user)):
+    """
+    Zwraca dane aktualnie zalogowanego użytkownika.
+    Wymaga tokena JWT w nagłówku.
+    """
+    return current_user

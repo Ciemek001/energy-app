@@ -5,6 +5,10 @@ from typing import Optional
 class UserBase(BaseModel):
     email: EmailStr
     role: Optional[str] = "user"
+    # Dodajemy opcjonalne pola do bazy
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    address: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str
@@ -15,6 +19,9 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    address: Optional[str] = None
 
 class UserOut(UserBase):
     id: int

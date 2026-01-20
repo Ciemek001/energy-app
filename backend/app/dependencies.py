@@ -31,3 +31,14 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
         raise credentials_exception
     
     return user
+
+def get_current_active_admin(current_user: User = Depends(get_current_user)):
+    """
+    Zależność, która sprawdza czy użytkownik jest administratorem.
+    """
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Brak wystarczających uprawnień (wymagany Administrator)"
+        )
+    return current_user

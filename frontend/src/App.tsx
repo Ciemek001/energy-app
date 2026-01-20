@@ -10,7 +10,8 @@ import AdvancedCalculator from "./views/AdvancedCalculator";
 import UserProfile from "./views/UserProfile";
 import Statistics from "./views/Statistics";
 import Settings from "./views/Settings";
-import ProtectedRoute from "./components/ProtectedRoute"; // <--- Import
+import ProtectedRoute from "./components/ProtectedRoute";
+import AdminPanel from "./views/AdminPanel"; // <--- Import
 
 const App: React.FC = () => {
   return (
@@ -30,6 +31,7 @@ const App: React.FC = () => {
             <Route path="/profile" element={<UserProfile />} />
             <Route path="/statistics" element={<Statistics />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/admin" element={<AdminPanel />} />
         </Route>
 
       </Routes>

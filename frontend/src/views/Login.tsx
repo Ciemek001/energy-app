@@ -1,4 +1,5 @@
 // frontend/src/views/Login.tsx
+import { API_URL } from "../config";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -14,6 +15,7 @@ import {
   Alert
 } from "@mui/material";
 import LockIcon from "@mui/icons-material/Lock";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack"; // <--- NOWY IMPORT
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -27,26 +29,22 @@ const LoginPage: React.FC = () => {
     setLoading(true);
 
     try {
-      console.log("Wysyłanie danych:", { email, password }); // Logowanie wysyłanych danych
+      console.log("Wysyłanie danych:", { email, password });
 
-      const response = await fetch("http://localhost:8000/login", {
+      const response = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
 
       const data = await response.json();
-      console.log("Odpowiedź serwera:", data); // Logowanie odpowiedzi
+      console.log("Odpowiedź serwera:", data);
 
       if (response.ok) {
-        // Sukces
         localStorage.setItem("token", data.access_token);
         navigate("/mode-selection");
       } else {
-        // Obsługa błędów
         if (response.status === 422) {
-            // Specjalna obsługa błędu walidacji (422)
-            // Backend zwraca tablicę błędów w 'detail'
             if (Array.isArray(data.detail)) {
                  const msgs = data.detail.map((err: any) => err.msg).join(", ");
                  setError("Błąd danych: " + msgs);
@@ -82,9 +80,16 @@ const LoginPage: React.FC = () => {
           <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
             <Stack spacing={3} alignItems="center">
               <LockIcon sx={{ fontSize: 56, color: "#0277bd" }} />
-              <Typography variant="h5" component="h1">
-                Logowanie
-              </Typography>
+              
+              <Box textAlign="center">
+                <Typography variant="h5" component="h1" fontWeight="bold">
+                  Logowanie
+                </Typography>
+                {/* --- NOWY OPIS --- */}
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Wprowadź swoje dane, aby zarządzać budynkami.
+                </Typography>
+              </Box>
 
               {error && (
                 <Alert severity="error" sx={{ width: "100%" }}>
@@ -115,20 +120,35 @@ const LoginPage: React.FC = () => {
                 fullWidth
                 onClick={handleLogin}
                 disabled={loading}
+                size="large"
               >
                 {loading ? "Logowanie..." : "Zaloguj się"}
               </Button>
 
               <Divider sx={{ width: "80%" }} />
 
-              <Button
-                variant="outlined"
-                color="secondary"
-                fullWidth
-                onClick={() => navigate("/register")}
-              >
-                Załóż konto
-              </Button>
+              <Stack spacing={1} width="100%">
+                <Button
+                    variant="outlined"
+                    color="secondary"
+                    fullWidth
+                    onClick={() => navigate("/register")}
+                >
+                    Załóż konto
+                </Button>
+
+                {/* --- NOWY PRZYCISK POWROTU --- */}
+                <Button
+                    startIcon={<ArrowBackIcon />}
+                    color="inherit"
+                    fullWidth
+                    onClick={() => navigate("/main")}
+                    sx={{ textTransform: "none", color: "text.secondary" }}
+                >
+                    Wróć do strony głównej
+                </Button>
+              </Stack>
+
             </Stack>
           </CardContent>
         </Card>

@@ -20,6 +20,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Cancel";
 import PersonIcon from "@mui/icons-material/Person";
+import LogoutIcon from "@mui/icons-material/Logout"; // <--- 1. IMPORT IKONY
 
 // Interfejs zgodny z backendem (UserOut)
 interface UserData {
@@ -44,6 +45,13 @@ const UserProfile: React.FC = () => {
     last_name: "",
     address: "",
   });
+
+  // --- 2. FUNKCJA WYLOGOWANIA ---
+  const handleLogout = () => {
+    localStorage.removeItem("token"); // Usunięcie tokena
+    navigate("/login"); // Przekierowanie do logowania
+  };
+  // ------------------------------
 
   // 1. Pobieranie danych użytkownika
   const fetchUserProfile = async () => {
@@ -237,23 +245,36 @@ const UserProfile: React.FC = () => {
               </Typography>
             </Box>
 
-            <Box mt={4}>
-              <Button
-                startIcon={<ArrowBackIcon />}
-                onClick={() => navigate("/mode-selection")}
-              >
-                Powrót do menu
-              </Button>
-              {user?.role === "admin" && (
-                <Button 
-                  variant="contained" 
-                  color="secondary" 
-                  sx={{ mt: 2 }} // Odstęp
-                  onClick={() => navigate("/admin")}
+            {/* Dolny pasek przycisków */}
+            <Box mt={4} display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
+              <Box display="flex" gap={2}>
+                <Button
+                  startIcon={<ArrowBackIcon />}
+                  onClick={() => navigate("/mode-selection")}
                 >
-                  Panel Administratora
+                  Powrót do menu
                 </Button>
-              )}
+                
+                {user?.role === "admin" && (
+                  <Button 
+                    variant="contained" 
+                    color="secondary" 
+                    onClick={() => navigate("/admin")}
+                  >
+                    Panel Admina
+                  </Button>
+                )}
+              </Box>
+
+              {/* --- 3. PRZYCISK WYLOGOWANIA --- */}
+              <Button 
+                variant="outlined" 
+                color="error" 
+                startIcon={<LogoutIcon />} 
+                onClick={handleLogout}
+              >
+                Wyloguj
+              </Button>
             </Box>
 
           </CardContent>

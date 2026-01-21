@@ -1,28 +1,24 @@
+# backend/app/routers/calculations.py
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.session import get_db
-from app.crud.crud_calculation import crud_calculation
-from app.schemas.calculation import CalculationCreate, CalculationOut
+from app.schemas.calculation import SimpleCalculationRequest, SimpleCalculationResponse
+from app.utils.calculator_simple import calculate_simple_energy
+from app.dependencies import get_current_user # Opcjonalnie, jeśli chcesz zapisywać historię
 
-router = APIRouter(prefix="/calculations", tags=["Calculations"])
+router = APIRouter(
+    prefix="/calculations",
+    tags=["calculations"]
+)
 
-
-@router.get("/", response_model=list[CalculationOut])
-async def get_all(db: AsyncSession = Depends(get_db)):
-    return await crud_calculation.get_all(db)
-
-
-@router.get("/{calc_id}", response_model=CalculationOut)
-async def get(calc_id: int, db: AsyncSession = Depends(get_db)):
-    calc = await crud_calculation.get(db, calc_id)
-    if not calc:
-        raise HTTPException(404, "Calculation not found")
-    return calc
-
-
-@router.post("/", response_model=CalculationOut)
-async def create(
-    calculation: CalculationCreate,
-    db: AsyncSession = Depends(get_db),
-):
-    return await crud_calculation.create(db, calculation)
+@router.post("/simple", response_model=SimpleCalculationResponse)
+def compute_simple_energy(data: SimpleCalculationRequest):
+    """
+    Przyjmuje dane budynku i zwraca szacunkowe zapotrzebowanie na energię (EU, EK, EP)
+    oraz listę rekomendacji.
+    """
+    try:
+        result = calculate_simple_energy(data)
+        return result
+    except Exception as e:
+        # W razie błędu w obliczeniach
+        print(f"Błąd obliczeń: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

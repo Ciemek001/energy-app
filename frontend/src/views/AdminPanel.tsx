@@ -214,7 +214,7 @@ const AdminPanel: React.FC = () => {
             </TableContainer>
 
             <Box mt={4}>
-              <Button startIcon={<ArrowBackIcon />} onClick={() => navigate("/mode-selection")}>
+              <Button startIcon={<ArrowBackIcon />} onClick={() => navigate("/profile")}>
                 Wróć do menu
               </Button>
             </Box>

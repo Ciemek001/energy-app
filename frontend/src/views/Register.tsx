@@ -11,15 +11,17 @@ import {
   Fade,
   Alert,
   Divider,
+  IconButton,
 } from "@mui/material";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import { useNavigate } from "react-router-dom";
+import { API_URL } from "../config";
 
 const Register: React.FC = () => {
   const navigate = useNavigate();
 
   // Stany formularza
-  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -28,14 +30,25 @@ const Register: React.FC = () => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Prosty Regex do walidacji emaila (musi mieć znaki, małpę, znaki, kropkę, znaki)
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   const handleRegister = async () => {
     setError("");
     
-    // Prosta walidacja front-endowa
-    if (!username || !email || !password) {
+    // 1. Walidacja pustych pól
+    if (!email || !password) {
       setError("Wypełnij wszystkie wymagane pola.");
       return;
     }
+
+    // 2. NOWA WALIDACJA: Sprawdzenie formatu email
+    if (!emailRegex.test(email)) {
+        setError("Podaj poprawny adres email (np. jan@example.com).");
+        return;
+    }
+
+    // 3. Walidacja haseł
     if (password !== confirmPassword) {
       setError("Hasła nie są identyczne.");
       return;
@@ -48,29 +61,41 @@ const Register: React.FC = () => {
     setLoading(true);
 
     try {
-      // Próba wysłania danych do backendu (FastAPI)
-      const response = await fetch("http://localhost:8000/users/", {
+      const response = await fetch(`${API_URL}/users/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          username: username,
           email: email,
           password: password,
         }),
       });
 
-      const data = await response.json();
+      // Zabezpieczenie przed błędem parsowania (gdyby serwer rzucił 500 HTML zamiast JSON)
+      let data;
+      try {
+          data = await response.json();
+      } catch (parseError) {
+          throw new Error("Błąd serwera (niepoprawna odpowiedź). Spróbuj ponownie później.");
+      }
 
       if (response.ok) {
-        // Sukces - przekierowanie do logowania
-        // Można tu dodać np. toast/snackbar z informacją "Konto utworzone"
+        // Sukces
         navigate("/login");
       } else {
-        // Błąd zwrócony przez API (np. email zajęty)
-        setError(data.detail || "Wystąpił błąd podczas rejestracji.");
+        // Obsługa błędów z API (np. email zajęty lub format niepoprawny wg backendu)
+        // Pydantic zwraca błędy walidacji w polu 'detail'
+        if (typeof data.detail === 'string') {
+            setError(data.detail);
+        } else if (Array.isArray(data.detail)) {
+            // Czasami Pydantic zwraca tablicę błędów
+            setError(data.detail[0]?.msg || "Błąd walidacji danych.");
+        } else {
+            setError("Wystąpił błąd podczas rejestracji.");
+        }
       }
-    } catch (err) {
-      setError("Nie udało się połączyć z serwerem.");
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Nie udało się połączyć z serwerem.");
     } finally {
       setLoading(false);
     }
@@ -84,7 +109,6 @@ const Register: React.FC = () => {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        // Ten sam gradient co w Login.tsx dla spójności
         background: "linear-gradient(135deg, #e8f7ff 0%, #f0fff4 100%)",
         p: 2,
       }}
@@ -94,12 +118,20 @@ const Register: React.FC = () => {
           elevation={8}
           sx={{
             width: "100%",
-            maxWidth: 450, // Nieco szersza karta niż logowanie, bo więcej pól
+            maxWidth: 450,
             borderRadius: 3,
             overflow: "visible",
+            position: "relative"
           }}
         >
-          <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
+            {/* PRZYCISK POWROTU */}
+            <Box sx={{ position: "absolute", top: 16, left: 16 }}>
+                <IconButton onClick={() => navigate("/")} aria-label="wróć">
+                    <ArrowBackIcon />
+                </IconButton>
+            </Box>
+
+          <CardContent sx={{ p: { xs: 3, sm: 4 }, pt: { xs: 6, sm: 6 } }}>
             <Stack spacing={2} alignItems="center">
               <PersonAddIcon sx={{ fontSize: 56, color: "#0277bd" }} />
               
@@ -114,19 +146,13 @@ const Register: React.FC = () => {
               )}
 
               <TextField
-                label="Nazwa użytkownika"
-                variant="outlined"
-                fullWidth
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
-              <TextField
                 label="Email"
                 type="email"
                 variant="outlined"
                 fullWidth
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                error={!!error && error.includes("email")} // Podświetla na czerwono jeśli błąd dotyczy maila
               />
               <TextField
                 label="Hasło"

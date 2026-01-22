@@ -16,7 +16,9 @@ import {
   Alert,
   IconButton,
   Chip,
-  Paper
+  Paper,
+  Tooltip,
+  CircularProgress
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import EditIcon from "@mui/icons-material/Edit";
@@ -27,8 +29,10 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import HomeWorkIcon from "@mui/icons-material/HomeWork";
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import DeleteIcon from "@mui/icons-material/Delete";
-import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'; // <--- NOWY IMPORT
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'; // <--- IKONA PDF
 import { API_URL } from "../config";
+import { generateEnergyReport } from "../utils/pdfGenerator"; // <--- GENERATOR PDF
 
 interface Building {
     id: number;
@@ -37,6 +41,7 @@ interface Building {
     construction_year: number;
     calculated_ep?: number;
     saved_data?: any;
+    city?: string; // Czasami strefa jest w city lub saved_data
 }
 
 interface UserData {
@@ -53,6 +58,7 @@ const UserProfile: React.FC = () => {
   const [user, setUser] = useState<UserData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null); // Loader dla konkretnego budynku
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const [editForm, setEditForm] = useState<UserData>({
@@ -150,6 +156,62 @@ const UserProfile: React.FC = () => {
 
   const handleEditBuilding = (building: Building) => {
       navigate("/calculator-simple", { state: { buildingData: building } });
+  };
+
+  // --- NOWA FUNKCJA: Generowanie PDF z listy ---
+  const handleGeneratePDF = async (building: Building) => {
+    setPdfLoadingId(building.id);
+    try {
+        // 1. Przygotuj dane do ponownego przeliczenia (Backend potrzebuje formatu SimpleCalculationRequest)
+        const details = building.saved_data?.details || {};
+        const systems = details.systems || {};
+        
+        // Mapowanie pól (z zapisanego obiektu na wymagania API)
+        const payload = {
+            area: building.floor_area,
+            year: building.construction_year,
+            floors: details.floors || 1,
+            inhabitants: details.inhabitants || 1,
+            climateZone: building.saved_data?.climate_zone || building.city || "I",
+            standards: details.standards || { wall: "brak", roof: "brak", window: "stare", floor: "nieocieplona" },
+            systems: {
+                heatingPrimary: systems.heatingPrimary || systems.heating || "wegiel", // Obsługa starych i nowych nazw
+                heatingSecondary: systems.heatingSecondary || null,
+                hotWater: systems.hotWater || "to_samo",
+                ventilation: systems.ventilation || "grawitacyjna",
+                pv: systems.pv || false,
+                solar: systems.solar || false
+            }
+        };
+
+        // 2. Wyślij do API obliczeniowego
+        const res = await fetch(`${API_URL}/calculations/simple`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            const resultData = await res.json();
+            
+            // 3. Wygeneruj PDF
+            const inputDataForPdf = {
+                name: building.name,
+                ...payload // Dodajemy parametry wejściowe do nagłówka PDF
+            };
+            generateEnergyReport(inputDataForPdf, resultData);
+            
+            setMessage({ type: "success", text: "Raport PDF został pobrany." });
+        } else {
+            setMessage({ type: "error", text: "Błąd generowania danych do raportu." });
+        }
+
+    } catch (err) {
+        console.error(err);
+        setMessage({ type: "error", text: "Błąd połączenia podczas generowania PDF." });
+    } finally {
+        setPdfLoadingId(null);
+    }
   };
 
   const getEpColor = (ep?: number) => {
@@ -289,13 +351,28 @@ const UserProfile: React.FC = () => {
                                         />
                                     )}
                                     
-                                    <IconButton color="primary" onClick={() => handleEditBuilding(building)}>
-                                        <EditIcon />
-                                    </IconButton>
+                                    {/* PRZYCISK PDF */}
+                                    <Tooltip title="Pobierz Raport PDF">
+                                        <IconButton 
+                                            color="secondary" 
+                                            onClick={() => handleGeneratePDF(building)}
+                                            disabled={pdfLoadingId === building.id}
+                                        >
+                                            {pdfLoadingId === building.id ? <CircularProgress size={24} /> : <PictureAsPdfIcon />}
+                                        </IconButton>
+                                    </Tooltip>
 
-                                    <IconButton color="error" onClick={() => handleDeleteBuilding(building.id)}>
-                                        <DeleteIcon />
-                                    </IconButton>
+                                    <Tooltip title="Edytuj i Przelicz">
+                                        <IconButton color="primary" onClick={() => handleEditBuilding(building)}>
+                                            <EditIcon />
+                                        </IconButton>
+                                    </Tooltip>
+
+                                    <Tooltip title="Usuń">
+                                        <IconButton color="error" onClick={() => handleDeleteBuilding(building.id)}>
+                                            <DeleteIcon />
+                                        </IconButton>
+                                    </Tooltip>
                                 </Stack>
                             </Paper>
                         ))
@@ -318,7 +395,6 @@ const UserProfile: React.FC = () => {
 
             {/* --- DOLNY PASEK NAWIGACJI --- */}
             <Box display="flex" justifyContent="space-between" alignItems="center">
-              {/* Grupa przycisków lewych (Powrót + Admin) */}
               <Stack direction="row" spacing={2}>
                   <Button
                     startIcon={<ArrowBackIcon />}
@@ -327,7 +403,6 @@ const UserProfile: React.FC = () => {
                     Powrót do menu
                   </Button>
 
-                  {/* PRZYCISK ADMINA - Widoczny tylko dla roli 'admin' */}
                   {user?.role === "admin" && (
                     <Button
                         variant="contained"

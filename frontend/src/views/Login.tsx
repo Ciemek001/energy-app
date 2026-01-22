@@ -12,10 +12,11 @@ import {
   Stack,
   Fade,
   Divider,
-  Alert
+  Alert,
+  IconButton // <--- Import IconButton
 } from "@mui/material";
 import LockIcon from "@mui/icons-material/Lock";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack"; // <--- NOWY IMPORT
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -29,8 +30,6 @@ const LoginPage: React.FC = () => {
     setLoading(true);
 
     try {
-      console.log("Wysyłanie danych:", { email, password });
-
       const response = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -38,7 +37,6 @@ const LoginPage: React.FC = () => {
       });
 
       const data = await response.json();
-      console.log("Odpowiedź serwera:", data);
 
       if (response.ok) {
         localStorage.setItem("token", data.access_token);
@@ -76,8 +74,24 @@ const LoginPage: React.FC = () => {
       }}
     >
       <Fade in timeout={700}>
-        <Card elevation={8} sx={{ width: "100%", maxWidth: 400, borderRadius: 3 }}>
-          <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
+        <Card 
+            elevation={8} 
+            sx={{ 
+                width: "100%", 
+                maxWidth: 400, 
+                borderRadius: 3,
+                overflow: "visible",
+                position: "relative" // Konieczne do pozycjonowania strzałki
+            }}
+        >
+            {/* --- PRZYCISK POWROTU (Nowy) --- */}
+            <Box sx={{ position: "absolute", top: 16, left: 16 }}>
+                <IconButton onClick={() => navigate("/")} aria-label="wróć">
+                    <ArrowBackIcon />
+                </IconButton>
+            </Box>
+
+          <CardContent sx={{ p: { xs: 3, sm: 4 }, pt: { xs: 6, sm: 6 } }}> {/* Zwiększony padding góra */}
             <Stack spacing={3} alignItems="center">
               <LockIcon sx={{ fontSize: 56, color: "#0277bd" }} />
               
@@ -85,7 +99,6 @@ const LoginPage: React.FC = () => {
                 <Typography variant="h5" component="h1" fontWeight="bold">
                   Logowanie
                 </Typography>
-                {/* --- NOWY OPIS --- */}
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                   Wprowadź swoje dane, aby zarządzać budynkami.
                 </Typography>
@@ -136,17 +149,8 @@ const LoginPage: React.FC = () => {
                 >
                     Załóż konto
                 </Button>
-
-                {/* --- NOWY PRZYCISK POWROTU --- */}
-                <Button
-                    startIcon={<ArrowBackIcon />}
-                    color="inherit"
-                    fullWidth
-                    onClick={() => navigate("/main")}
-                    sx={{ textTransform: "none", color: "text.secondary" }}
-                >
-                    Wróć do strony głównej
-                </Button>
+                
+                {/* Usunięto stary przycisk "Wróć do strony głównej" */}
               </Stack>
 
             </Stack>

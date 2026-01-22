@@ -3,22 +3,27 @@ import { useNavigate } from "react-router-dom";
 import {
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Stack, Tooltip, Alert, Avatar,
-  TextField, FormControl, InputLabel, Select, MenuItem
+  TextField, FormControl, InputLabel, Select, MenuItem, CircularProgress
 } from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
-import EditIcon from "@mui/icons-material/Edit"; // <--- IKONA EDYCJI
+import EditIcon from "@mui/icons-material/Edit";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import HomeWorkIcon from "@mui/icons-material/HomeWork";
 import VerifiedUserIcon from "@mui/icons-material/VerifiedUser";
 import PersonIcon from "@mui/icons-material/Person";
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'; // <--- IKONA PDF
 import { API_URL } from "../config";
+import { generateEnergyReport } from "../utils/pdfGenerator"; // <--- GENERATOR
 
+// Zaktualizowany interfejs (dodano pola potrzebne do PDF)
 interface Building {
     id: number;
     name: string;
     floor_area: number;
     construction_year: number;
     calculated_ep?: number;
+    saved_data?: any; // <--- Ważne dla raportu
+    city?: string;    // <--- Ważne dla raportu
 }
 
 interface User {
@@ -27,7 +32,7 @@ interface User {
   role: string;
   first_name?: string;
   last_name?: string;
-  address?: string; // Dodano adres do interfejsu
+  address?: string;
   buildings?: Building[];
 }
 
@@ -35,6 +40,9 @@ const AdminPanel: React.FC = () => {
   const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   
+  // Stan dla loadera PDF
+  const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null);
+
   // --- STANY DLA MODALA BUDYNKÓW ---
   const [selectedUserForBuildings, setSelectedUserForBuildings] = useState<User | null>(null);
   const [openBuildingsDialog, setOpenBuildingsDialog] = useState(false);
@@ -42,7 +50,6 @@ const AdminPanel: React.FC = () => {
   // --- STANY DLA MODALA EDYCJI UŻYTKOWNIKA ---
   const [openEditUserDialog, setOpenEditUserDialog] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  // Formularz edycji
   const [editForm, setEditForm] = useState({
       email: "",
       first_name: "",
@@ -79,6 +86,59 @@ const AdminPanel: React.FC = () => {
     fetchUsers();
   }, []);
 
+  // --- LOGIKA GENEROWANIA PDF (Nowość) ---
+  const handleGeneratePDF = async (building: Building) => {
+    setPdfLoadingId(building.id);
+    try {
+        // 1. Przygotuj dane do ponownego przeliczenia
+        const details = building.saved_data?.details || {};
+        const systems = details.systems || {};
+        
+        const payload = {
+            area: building.floor_area,
+            year: building.construction_year,
+            floors: details.floors || 1,
+            inhabitants: details.inhabitants || 1,
+            climateZone: building.saved_data?.climate_zone || building.city || "I",
+            standards: details.standards || { wall: "brak", roof: "brak", window: "stare", floor: "nieocieplona" },
+            systems: {
+                heatingPrimary: systems.heatingPrimary || systems.heating || "wegiel",
+                heatingSecondary: systems.heatingSecondary || null,
+                hotWater: systems.hotWater || "to_samo",
+                ventilation: systems.ventilation || "grawitacyjna",
+                pv: systems.pv || false,
+                solar: systems.solar || false
+            }
+        };
+
+        // 2. Wyślij do API obliczeniowego
+        const res = await fetch(`${API_URL}/calculations/simple`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            const resultData = await res.json();
+            
+            // 3. Wygeneruj PDF
+            const inputDataForPdf = {
+                name: building.name,
+                ...payload 
+            };
+            generateEnergyReport(inputDataForPdf, resultData);
+        } else {
+            alert("Błąd generowania danych do raportu.");
+        }
+
+    } catch (err) {
+        console.error(err);
+        alert("Błąd połączenia podczas generowania PDF.");
+    } finally {
+        setPdfLoadingId(null);
+    }
+  };
+
   // --- LOGIKA USUWANIA ---
   const handleDeleteUser = async (userId: number) => {
     if (!window.confirm("Czy na pewno chcesz usunąć tego użytkownika i wszystkie jego dane?")) {
@@ -111,11 +171,9 @@ const AdminPanel: React.FC = () => {
               headers: { Authorization: `Bearer ${token}` }
           });
           if (res.ok && selectedUserForBuildings && selectedUserForBuildings.buildings) {
-              // Aktualizuj lokalnie listę budynków w modalu
               const updatedBuildings = selectedUserForBuildings.buildings.filter(b => b.id !== buildingId);
               const updatedUser = { ...selectedUserForBuildings, buildings: updatedBuildings };
               setSelectedUserForBuildings(updatedUser);
-              // Aktualizuj główną listę userów
               setUsers(users.map(u => u.id === selectedUserForBuildings.id ? updatedUser : u));
           } else {
               alert("Błąd usuwania budynku.");
@@ -126,7 +184,6 @@ const AdminPanel: React.FC = () => {
   };
 
   // --- LOGIKA EDYCJI UŻYTKOWNIKA ---
-  
   const handleOpenEdit = (user: User) => {
       setEditingUser(user);
       setEditForm({
@@ -155,10 +212,8 @@ const AdminPanel: React.FC = () => {
 
           if (res.ok) {
               const updatedUser = await res.json();
-              // Aktualizujemy listę userów w tabeli
               setUsers(users.map(u => u.id === editingUser.id ? { ...u, ...updatedUser } : u));
               setOpenEditUserDialog(false);
-              // alert("Zaktualizowano dane użytkownika!");
           } else {
               const err = await res.json();
               alert("Błąd aktualizacji: " + (err.detail || "Nieznany błąd"));
@@ -168,7 +223,6 @@ const AdminPanel: React.FC = () => {
           alert("Błąd sieci");
       }
   };
-
 
   return (
     <Box sx={{ minHeight: "100vh", p: 4, background: "#f5f5f5" }}>
@@ -226,21 +280,18 @@ const AdminPanel: React.FC = () => {
                             <TableCell align="right">
                                 <Stack direction="row" justifyContent="flex-end" spacing={1}>
                                     
-                                    {/* EDYCJA DANYCH */}
                                     <Tooltip title="Edytuj dane użytkownika">
                                         <IconButton color="default" onClick={() => handleOpenEdit(user)}>
                                             <EditIcon />
                                         </IconButton>
                                     </Tooltip>
 
-                                    {/* PODGLĄD BUDYNKÓW */}
                                     <Tooltip title="Zarządzaj budynkami">
                                         <IconButton color="primary" onClick={() => { setSelectedUserForBuildings(user); setOpenBuildingsDialog(true); }}>
                                             <HomeWorkIcon />
                                         </IconButton>
                                     </Tooltip>
                                     
-                                    {/* USUWANIE */}
                                     <Tooltip title="Usuń użytkownika">
                                         <IconButton color="error" onClick={() => handleDeleteUser(user.id)}>
                                             <DeleteIcon />
@@ -267,7 +318,21 @@ const AdminPanel: React.FC = () => {
                                 <Typography variant="subtitle1" fontWeight="bold">{b.name}</Typography>
                                 <Typography variant="caption">Rok: {b.construction_year} | {b.floor_area} m²</Typography>
                             </Box>
-                            <Button variant="outlined" color="error" startIcon={<DeleteIcon />} size="small" onClick={() => handleDeleteBuilding(b.id)}>Usuń</Button>
+                            
+                            <Stack direction="row" spacing={1}>
+                                {/* NOWY PRZYCISK PDF DLA ADMINA */}
+                                <Tooltip title="Pobierz Raport PDF">
+                                    <IconButton 
+                                        color="primary" 
+                                        onClick={() => handleGeneratePDF(b)}
+                                        disabled={pdfLoadingId === b.id}
+                                    >
+                                        {pdfLoadingId === b.id ? <CircularProgress size={20} /> : <PictureAsPdfIcon />}
+                                    </IconButton>
+                                </Tooltip>
+
+                                <Button variant="outlined" color="error" startIcon={<DeleteIcon />} size="small" onClick={() => handleDeleteBuilding(b.id)}>Usuń</Button>
+                            </Stack>
                         </Paper>
                     ))}
                 </Stack>

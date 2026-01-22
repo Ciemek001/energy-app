@@ -1,3 +1,4 @@
+// frontend/src/views/UserProfile.tsx
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -13,22 +14,38 @@ import {
   Fade,
   Grid,
   Alert,
-  IconButton
+  IconButton,
+  Chip,
+  Paper
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import EditIcon from "@mui/icons-material/Edit";
 import SaveIcon from "@mui/icons-material/Save";
 import CancelIcon from "@mui/icons-material/Cancel";
 import PersonIcon from "@mui/icons-material/Person";
-import LogoutIcon from "@mui/icons-material/Logout"; // <--- 1. IMPORT IKONY
+import LogoutIcon from "@mui/icons-material/Logout";
+import HomeWorkIcon from "@mui/icons-material/HomeWork";
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import DeleteIcon from "@mui/icons-material/Delete";
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'; // <--- NOWY IMPORT
+import { API_URL } from "../config";
 
-// Interfejs zgodny z backendem (UserOut)
+interface Building {
+    id: number;
+    name: string;
+    floor_area: number;
+    construction_year: number;
+    calculated_ep?: number;
+    saved_data?: any;
+}
+
 interface UserData {
   email: string;
   first_name?: string;
   last_name?: string;
   address?: string;
   role?: string;
+  buildings: Building[];
 }
 
 const UserProfile: React.FC = () => {
@@ -38,22 +55,19 @@ const UserProfile: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Stany formularza edycji
   const [editForm, setEditForm] = useState<UserData>({
     email: "",
     first_name: "",
     last_name: "",
     address: "",
+    buildings: []
   });
 
-  // --- 2. FUNKCJA WYLOGOWANIA ---
   const handleLogout = () => {
-    localStorage.removeItem("token"); // Usunięcie tokena
-    navigate("/login"); // Przekierowanie do logowania
+    localStorage.removeItem("token");
+    navigate("/login");
   };
-  // ------------------------------
 
-  // 1. Pobieranie danych użytkownika
   const fetchUserProfile = async () => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -62,7 +76,7 @@ const UserProfile: React.FC = () => {
     }
 
     try {
-      const response = await fetch("http://localhost:8000/users/me", {
+      const response = await fetch(`${API_URL}/users/me`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -71,9 +85,9 @@ const UserProfile: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         setUser(data);
-        setEditForm(data); // Inicjalizacja formularza
+        setEditForm(data);
       } else {
-        navigate("/login"); // Token nieważny
+        navigate("/login");
       }
     } catch (err) {
       console.error("Błąd pobierania profilu", err);
@@ -86,11 +100,10 @@ const UserProfile: React.FC = () => {
     fetchUserProfile();
   }, [navigate]);
 
-  // 2. Obsługa zapisu danych
   const handleSave = async () => {
     const token = localStorage.getItem("token");
     try {
-      const response = await fetch("http://localhost:8000/users/me", {
+      const response = await fetch(`${API_URL}/users/me`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -104,8 +117,7 @@ const UserProfile: React.FC = () => {
       });
 
       if (response.ok) {
-        const updatedUser = await response.json();
-        setUser(updatedUser);
+        fetchUserProfile(); 
         setIsEditing(false);
         setMessage({ type: "success", text: "Profil zaktualizowany pomyślnie!" });
       } else {
@@ -116,13 +128,44 @@ const UserProfile: React.FC = () => {
     }
   };
 
+  const handleDeleteBuilding = async (id: number) => {
+    if (!window.confirm("Czy na pewno chcesz usunąć ten budynek?")) return;
+
+    const token = localStorage.getItem("token");
+    try {
+        const res = await fetch(`${API_URL}/buildings/${id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+            fetchUserProfile(); 
+            setMessage({ type: "success", text: "Budynek usunięty." });
+        } else {
+            setMessage({ type: "error", text: "Błąd usuwania budynku." });
+        }
+    } catch (err) {
+        console.error(err);
+    }
+  };
+
+  const handleEditBuilding = (building: Building) => {
+      navigate("/calculator-simple", { state: { buildingData: building } });
+  };
+
+  const getEpColor = (ep?: number) => {
+      if (!ep) return "default";
+      if (ep <= 70) return "success";
+      if (ep <= 150) return "warning";
+      return "error";
+  };
+
   if (loading) return <Box p={4} textAlign="center">Ładowanie profilu...</Box>;
 
   return (
     <Box
       sx={{
         minHeight: "100vh",
-        background: "linear-gradient(135deg, #e8f7ff 0%, #f0fff4 100%)", // Spójne tło
+        background: "linear-gradient(135deg, #e8f7ff 0%, #f0fff4 100%)",
         p: 3,
         display: "flex",
         justifyContent: "center",
@@ -130,10 +173,9 @@ const UserProfile: React.FC = () => {
       }}
     >
       <Fade in timeout={800}>
-        <Card elevation={6} sx={{ width: "100%", maxWidth: 800, borderRadius: 3, mt: 4 }}>
+        <Card elevation={6} sx={{ width: "100%", maxWidth: 900, borderRadius: 3, mt: 4 }}>
           <CardContent sx={{ p: 4 }}>
             
-            {/* Nagłówek i Komunikaty */}
             <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
               <Typography variant="h4" fontWeight="bold" color="primary.main">
                 Twój Profil
@@ -170,103 +212,134 @@ const UserProfile: React.FC = () => {
             )}
 
             <Grid container spacing={4}>
-              {/* Kolumna Lewa: Awatar i Email */}
               <Grid item xs={12} md={4} textAlign="center">
                 <Box display="flex" flexDirection="column" alignItems="center">
-                  <Avatar sx={{ width: 100, height: 100, bgcolor: "#0277bd", mb: 2, fontSize: 40 }}>
+                  <Avatar sx={{ width: 100, height: 100, bgcolor: "#0277bd", mb: 2 }}>
                     {user?.first_name ? user.first_name[0] : <PersonIcon fontSize="large"/>}
                   </Avatar>
                   <Typography variant="h6">{user?.email}</Typography>
                   <Typography variant="body2" color="text.secondary">Rola: {user?.role}</Typography>
                 </Box>
+                
+                <Stack spacing={2} mt={3} textAlign="left">
+                    <TextField
+                        label="Imię"
+                        size="small"
+                        disabled={!isEditing}
+                        value={isEditing ? editForm.first_name : user?.first_name || ""}
+                        onChange={(e) => setEditForm({...editForm, first_name: e.target.value})}
+                    />
+                    <TextField
+                        label="Nazwisko"
+                        size="small"
+                        disabled={!isEditing}
+                        value={isEditing ? editForm.last_name : user?.last_name || ""}
+                        onChange={(e) => setEditForm({...editForm, last_name: e.target.value})}
+                    />
+                    <TextField
+                        label="Adres"
+                        size="small"
+                        disabled={!isEditing}
+                        value={isEditing ? editForm.address : user?.address || ""}
+                        onChange={(e) => setEditForm({...editForm, address: e.target.value})}
+                    />
+                </Stack>
               </Grid>
 
-              {/* Kolumna Prawa: Dane szczegółowe */}
               <Grid item xs={12} md={8}>
-                <Stack spacing={3}>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">Imię</Typography>
-                    {isEditing ? (
-                      <TextField
-                        fullWidth
+                <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
+                    <Typography variant="h6" display="flex" alignItems="center" gap={1}>
+                        <HomeWorkIcon color="action"/> Twoje budynki
+                    </Typography>
+                    <Button 
+                        startIcon={<AddCircleOutlineIcon />} 
                         size="small"
-                        value={editForm.first_name || ""}
-                        onChange={(e) => setEditForm({...editForm, first_name: e.target.value})}
-                      />
-                    ) : (
-                      <Typography variant="body1" fontWeight="500">
-                        {user?.first_name || "—"}
-                      </Typography>
-                    )}
-                  </Box>
-
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">Nazwisko</Typography>
-                    {isEditing ? (
-                      <TextField
-                        fullWidth
-                        size="small"
-                        value={editForm.last_name || ""}
-                        onChange={(e) => setEditForm({...editForm, last_name: e.target.value})}
-                      />
-                    ) : (
-                      <Typography variant="body1" fontWeight="500">
-                        {user?.last_name || "—"}
-                      </Typography>
-                    )}
-                  </Box>
-
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">Adres</Typography>
-                    {isEditing ? (
-                      <TextField
-                        fullWidth
-                        size="small"
-                        value={editForm.address || ""}
-                        onChange={(e) => setEditForm({...editForm, address: e.target.value})}
-                      />
-                    ) : (
-                      <Typography variant="body1" fontWeight="500">
-                        {user?.address || "—"}
-                      </Typography>
-                    )}
-                  </Box>
+                        onClick={() => navigate("/calculator-simple")}
+                    >
+                        Dodaj nowy
+                    </Button>
                 </Stack>
+                
+                <Divider sx={{ mb: 2 }} />
+
+                <Stack spacing={2}>
+                    {user?.buildings && user.buildings.length > 0 ? (
+                        user.buildings.map((building) => (
+                            <Paper 
+                                key={building.id} 
+                                variant="outlined" 
+                                sx={{ p: 2, borderRadius: 2, display: "flex", justifyContent: "space-between", alignItems: "center", bgcolor: "#fafafa" }}
+                            >
+                                <Box>
+                                    <Typography variant="subtitle1" fontWeight="bold">
+                                        {building.name}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                        Rok: {building.construction_year} | Pow: {building.floor_area} m²
+                                    </Typography>
+                                </Box>
+                                
+                                <Stack direction="row" spacing={1} alignItems="center">
+                                    {building.calculated_ep && (
+                                        <Chip 
+                                            label={`EP: ${Math.round(building.calculated_ep)}`} 
+                                            color={getEpColor(building.calculated_ep) as any} 
+                                            variant="outlined" 
+                                            size="small"
+                                        />
+                                    )}
+                                    
+                                    <IconButton color="primary" onClick={() => handleEditBuilding(building)}>
+                                        <EditIcon />
+                                    </IconButton>
+
+                                    <IconButton color="error" onClick={() => handleDeleteBuilding(building.id)}>
+                                        <DeleteIcon />
+                                    </IconButton>
+                                </Stack>
+                            </Paper>
+                        ))
+                    ) : (
+                        <Box sx={{ p: 4, bgcolor: "#f5f8ff", borderRadius: 2, border: "1px dashed #0277bd", textAlign: "center" }}>
+                            <Typography color="text.secondary">
+                                Nie masz jeszcze zapisanych budynków.
+                            </Typography>
+                            <Button sx={{ mt: 1 }} onClick={() => navigate("/calculator-simple")}>
+                                Przejdź do kalkulatora
+                            </Button>
+                        </Box>
+                    )}
+                </Stack>
+
               </Grid>
             </Grid>
 
             <Divider sx={{ my: 4 }} />
 
-            {/* Sekcja Budynków (Placeholder na przyszłość) */}
-            <Typography variant="h6" gutterBottom>Twoje budynki</Typography>
-            <Box sx={{ p: 2, bgcolor: "#f5f8ff", borderRadius: 2, border: "1px dashed #0277bd" }}>
-              <Typography color="text.secondary" align="center">
-                Tutaj pojawi się lista Twoich budynków po podłączeniu modułu obliczeniowego.
-              </Typography>
-            </Box>
-
-            {/* Dolny pasek przycisków */}
-            <Box mt={4} display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
-              <Box display="flex" gap={2}>
-                <Button
-                  startIcon={<ArrowBackIcon />}
-                  onClick={() => navigate("/mode-selection")}
-                >
-                  Powrót do menu
-                </Button>
-                
-                {user?.role === "admin" && (
-                  <Button 
-                    variant="contained" 
-                    color="secondary" 
-                    onClick={() => navigate("/admin")}
+            {/* --- DOLNY PASEK NAWIGACJI --- */}
+            <Box display="flex" justifyContent="space-between" alignItems="center">
+              {/* Grupa przycisków lewych (Powrót + Admin) */}
+              <Stack direction="row" spacing={2}>
+                  <Button
+                    startIcon={<ArrowBackIcon />}
+                    onClick={() => navigate("/mode-selection")}
                   >
-                    Panel Admina
+                    Powrót do menu
                   </Button>
-                )}
-              </Box>
 
-              {/* --- 3. PRZYCISK WYLOGOWANIA --- */}
+                  {/* PRZYCISK ADMINA - Widoczny tylko dla roli 'admin' */}
+                  {user?.role === "admin" && (
+                    <Button
+                        variant="contained"
+                        color="secondary"
+                        startIcon={<AdminPanelSettingsIcon />}
+                        onClick={() => navigate("/admin")}
+                    >
+                        Panel Administratora
+                    </Button>
+                  )}
+              </Stack>
+
               <Button 
                 variant="outlined" 
                 color="error" 

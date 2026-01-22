@@ -2,10 +2,8 @@
 from pydantic import BaseModel
 from typing import Optional, List
 
-# --- MODELE WEJŚCIOWE (INPUT) ---
-
 class StandardsInput(BaseModel):
-    wall: str   # brak, slaba, srednia, dobra
+    wall: str
     roof: str
     window: str
     floor: str
@@ -23,23 +21,29 @@ class SimpleCalculationRequest(BaseModel):
     year: int
     floors: int
     inhabitants: int
-    climateZone: str # I, II, III, IV, V
+    climateZone: str
     standards: StandardsInput
     systems: SystemsInput
-
-# --- MODELE WYJŚCIOWE (OUTPUT) ---
 
 class Recommendation(BaseModel):
     title: str
     description: str
-    type: str       # modernization, system, oze
-    priority: str   # high, medium, low
+    type: str
+    priority: str
+
+# --- NOWE: Szczegóły do wykresów ---
+class ChartDetails(BaseModel):
+    heat_transmission: float
+    heat_ventilation: float
+    hot_water: float
 
 class SimpleCalculationResponse(BaseModel):
-    EU: float # Energia Użytkowa [kWh/m2/rok]
-    EK: float # Energia Końcowa [kWh/m2/rok]
-    EP: float # Energia Pierwotna [kWh/m2/rok]
-    raw_EU: float # Całkowita energia użytkowa [kWh/rok]
-    raw_EK: float # Całkowita energia końcowa [kWh/rok]
-    raw_EP: float # Całkowita energia pierwotna [kWh/rok]
+    EU: float
+    EK: float
+    EP: float
+    raw_EU: float
+    raw_EK: float
+    raw_EP: float
+    # To pole jest wymagane, żeby wykresy działały!
+    details: Optional[ChartDetails] = None 
     recommendations: List[Recommendation]

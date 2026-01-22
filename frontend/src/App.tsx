@@ -11,7 +11,7 @@ import UserProfile from "./views/UserProfile";
 import Statistics from "./views/Statistics";
 import Settings from "./views/Settings";
 import ProtectedRoute from "./components/ProtectedRoute";
-import AdminPanel from "./views/AdminPanel"; // <--- Import
+import AdminPanel from "./views/AdminPanel";
 
 const App: React.FC = () => {
   return (

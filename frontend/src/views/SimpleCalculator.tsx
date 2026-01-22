@@ -1,36 +1,10 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  TextField,
-  Button,
-  Stack,
-  Select,
-  MenuItem,
-  InputLabel,
-  FormControl,
-  Fade,
-  Grid,
-  Divider,
-  Tooltip,
-  IconButton,
-  FormControlLabel,
-  Checkbox,
-  Collapse,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Paper,
-  CircularProgress
+  Box, Card, CardContent, Typography, TextField, Button, Stack, Select, MenuItem, InputLabel,
+  FormControl, Fade, Grid, Divider, Tooltip, IconButton, FormControlLabel, Checkbox, Collapse,
+  Dialog, DialogTitle, DialogContent, DialogActions, Chip, List, ListItem, ListItemText, ListItemIcon,
+  Paper, CircularProgress, Alert
 } from "@mui/material";
 import CalculateIcon from "@mui/icons-material/Calculate";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -38,15 +12,26 @@ import InfoIcon from "@mui/icons-material/Info";
 import SolarPowerIcon from '@mui/icons-material/SolarPower';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WarningIcon from '@mui/icons-material/Warning';
-import ErrorIcon from '@mui/icons-material/Error';
-import { API_URL } from "../config"; // Upewnij się, że masz ten plik!
+import SaveIcon from '@mui/icons-material/Save';
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
+import { API_URL } from "../config"; 
+import { generateEnergyReport } from "../utils/pdfGenerator";
+import { 
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, 
+    PieChart, Pie, Cell 
+} from 'recharts';
 
-// Typy odpowiedzi z backendu
 interface Recommendation {
     title: string;
     description: string;
     type: string;
     priority: "high" | "medium" | "low";
+}
+
+interface ChartDetails {
+    heat_transmission: number;
+    heat_ventilation: number;
+    hot_water: number;
 }
 
 interface CalculationResult {
@@ -56,11 +41,13 @@ interface CalculationResult {
     raw_EU: number;
     raw_EK: number;
     raw_EP: number;
+    details: ChartDetails;
     recommendations: Recommendation[];
 }
 
 const SimpleCalculator: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // --- STANY DANYCH ---
   const [area, setArea] = useState<number | "">("");
@@ -89,13 +76,63 @@ const SimpleCalculator: React.FC = () => {
   const [result, setResult] = useState<CalculationResult | null>(null);
   const [openResult, setOpenResult] = useState(false);
 
+  // --- STANY DO ZAPISU / EDYCJI ---
+  const [saveMode, setSaveMode] = useState(false);
+  const [buildingName, setBuildingName] = useState("");
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (location.state && location.state.buildingData) {
+        const b = location.state.buildingData;
+        const details = b.saved_data;
+        
+        console.log("Tryb edycji dla:", b.name);
+        setEditingId(b.id);
+        setBuildingName(b.name);
+        setSaveMode(true); 
+
+        setArea(b.floor_area);
+        setYear(b.construction_year);
+        setClimateZone(b.city || "I"); 
+
+        if (details) {
+            setFloors(details.floors || 1);
+            setInhabitants(details.inhabitants || 1);
+
+            if (details.standards) {
+                setWallStandard(details.standards.wall);
+                setRoofStandard(details.standards.roof);
+                setWindowStandard(details.standards.window);
+                setFloorStandard(details.standards.floor);
+            }
+
+            if (details.systems) {
+                setHeatingSource(details.systems.heatingPrimary || details.systems.heating); 
+                setHotWaterSource(details.systems.hotWater);
+                setVentilation(details.systems.ventilation);
+                setHasPV(details.systems.pv);
+                setHasSolarCollectors(details.systems.solar);
+                
+                if (details.systems.heatingSecondary) {
+                    setHasSecondaryHeating(true);
+                    setSecondaryHeatingSource(details.systems.heatingSecondary);
+                }
+            }
+        }
+    }
+  }, [location]);
+
   const handleCalculate = async () => {
     if (!area || !year || !floors || !inhabitants) {
-        alert("Wypełnij wszystkie pola liczbowe (Powierzchnia, Rok, Mieszkańcy, Piętra).");
+        alert("Wypełnij wszystkie pola liczbowe.");
         return;
     }
-
     setLoading(true);
+    if (!editingId) setSaveMode(false); 
+    setSaveSuccess(false);
 
     const payload = {
         area: Number(area),
@@ -103,19 +140,13 @@ const SimpleCalculator: React.FC = () => {
         floors: Number(floors),
         inhabitants: Number(inhabitants),
         climateZone,
-        standards: { 
-            wall: wallStandard, 
-            roof: roofStandard, 
-            window: windowStandard, 
-            floor: floorStandard 
-        },
+        standards: { wall: wallStandard, roof: roofStandard, window: windowStandard, floor: floorStandard },
         systems: { 
             heatingPrimary: heatingSource, 
             heatingSecondary: hasSecondaryHeating ? secondaryHeatingSource : null,
             hotWater: hotWaterSource, 
             ventilation,
-            pv: hasPV,
-            solar: hasSolarCollectors
+            pv: hasPV, solar: hasSolarCollectors
         }
     };
 
@@ -125,52 +156,137 @@ const SimpleCalculator: React.FC = () => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
-
         if (response.ok) {
             const data = await response.json();
             setResult(data);
             setOpenResult(true);
         } else {
-            const err = await response.json();
-            alert("Błąd obliczeń: " + (err.detail || "Nieznany błąd"));
+            alert("Błąd obliczeń");
         }
     } catch (error) {
         console.error(error);
-        alert("Nie udało się połączyć z serwerem.");
+        alert("Błąd sieci");
     } finally {
         setLoading(false);
     }
   };
 
-  // Helper do kolorów wyników
-  const getEpColor = (ep: number) => {
-      if (ep <= 70) return "#4caf50"; // Zielony (WT2021)
-      if (ep <= 150) return "#ff9800"; // Pomarańczowy
-      return "#f44336"; // Czerwony
+  const handleSaveBuilding = async () => {
+      if (!buildingName) {
+          alert("Podaj nazwę budynku!");
+          return;
+      }
+      
+      const token = localStorage.getItem("token");
+      if (!token) {
+          alert("Musisz być zalogowany, aby zapisać budynek.");
+          return; 
+      }
+
+      setSaveLoading(true);
+      
+      const savePayload = {
+          name: buildingName,
+          area: Number(area),
+          year: Number(year),
+          climate_zone: climateZone,
+          details: { 
+              floors: Number(floors),
+              inhabitants: Number(inhabitants),
+              standards: { wall: wallStandard, roof: roofStandard, window: windowStandard, floor: floorStandard },
+              systems: { 
+                  heatingPrimary: heatingSource, 
+                  heatingSecondary: hasSecondaryHeating ? secondaryHeatingSource : null,
+                  hotWater: hotWaterSource, 
+                  ventilation, 
+                  pv: hasPV, 
+                  solar: hasSolarCollectors 
+              }
+          },
+          eu_result: result?.EU,
+          ep_result: result?.EP
+      };
+
+      try {
+          const url = editingId 
+            ? `${API_URL}/buildings/${editingId}` 
+            : `${API_URL}/buildings/`;
+            
+          const method = editingId ? "PUT" : "POST";
+
+          const response = await fetch(url, {
+              method: method,
+              headers: { 
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${token}` 
+              },
+              body: JSON.stringify(savePayload)
+          });
+
+          if (response.ok) {
+              setSaveSuccess(true);
+              setSaveMode(false);
+              
+              if (editingId) {
+                  alert("Zaktualizowano dane budynku!");
+                  navigate("/profile"); 
+              }
+          } else {
+              alert("Błąd zapisu danych");
+          }
+      } catch (err) {
+          console.error(err);
+          alert("Błąd połączenia");
+      } finally {
+          setSaveLoading(false);
+      }
   };
 
+  const handleDownloadPDF = () => {
+    if (!result) return;
+    
+    const inputData = {
+        name: buildingName || "Budynek bez nazwy",
+        area, year, floors, inhabitants, climateZone,
+        standards: { wall: wallStandard, roof: roofStandard, window: windowStandard, floor: floorStandard },
+        systems: { heatingPrimary: heatingSource, ventilation: ventilation, pv: hasPV }
+    };
+
+    generateEnergyReport(inputData, result);
+  };
+
+  const getEpColor = (ep: number) => {
+      if (ep <= 70) return "#4caf50"; 
+      if (ep <= 150) return "#ff9800"; 
+      return "#f44336";
+  };
+
+  const barData = result ? [
+      { name: 'Twój Dom', EP: result.EP },
+      { name: 'Norma WT2021', EP: 70 },
+  ] : [];
+
+  const pieData = result && result.details ? [
+      { name: 'Przenikanie', value: result.details.heat_transmission },
+      { name: 'Wentylacja', value: result.details.heat_ventilation },
+      { name: 'CWU', value: result.details.hot_water },
+  ] : [];
+
+  const COLORS = ['#0088FE', '#00C49F', '#FFBB28'];
+
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "flex-start",
-        background: "linear-gradient(135deg, #e8f7ff 0%, #f0fff4 100%)",
-        p: 4,
-      }}
-    >
+    <Box sx={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "flex-start", background: "linear-gradient(135deg, #e8f7ff 0%, #f0fff4 100%)", p: 4 }}>
       <Fade in timeout={700}>
         <Card sx={{ width: "100%", maxWidth: 900, borderRadius: 3, p: 2 }} elevation={8}>
           <CardContent>
             
-            <Stack direction="row" alignItems="center" spacing={2} mb={4}>
+             <Stack direction="row" alignItems="center" spacing={2} mb={4}>
                 <IconButton onClick={() => navigate("/mode-selection")}>
                     <ArrowBackIcon />
                 </IconButton>
                 <Box>
                     <Typography variant="h4" fontWeight="bold" color="#0277bd">
-                        Kalkulator Uproszczony
+                        {editingId ? "Edycja Budynku" : "Kalkulator Uproszczony"}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                         Metoda wskaźnikowa – szacunek na podstawie standardu budynku.
@@ -194,7 +310,7 @@ const SimpleCalculator: React.FC = () => {
                              <TextField label="Liczba mieszkańców" type="number" fullWidth value={inhabitants} onChange={(e) => setInhabitants(Number(e.target.value))} />
                         </Grid>
                         <Grid item xs={12} sm={6} md={3}>
-                            <TextField label="Liczba kondygnacji" type="number" fullWidth value={floors} onChange={(e) => setFloors(Number(e.target.value))} />
+                            <TextField label="Kondygnacje" type="number" fullWidth value={floors} onChange={(e) => setFloors(Number(e.target.value))} />
                         </Grid>
                         <Grid item xs={12} md={6}>
                             <FormControl fullWidth>
@@ -332,7 +448,6 @@ const SimpleCalculator: React.FC = () => {
                     </Grid>
                 </Grid>
 
-                {/* PRZYCISK */}
                 <Grid item xs={12}>
                     <Box mt={2} display="flex" justifyContent="center">
                         <Button
@@ -347,7 +462,7 @@ const SimpleCalculator: React.FC = () => {
                                 boxShadow: "0 3px 5px 2px rgba(33, 203, 243, .3)"
                             }}
                         >
-                            {loading ? "Obliczanie..." : "Wykonaj obliczenia"}
+                            {loading ? "Obliczanie..." : editingId ? "Zaktualizuj i Przelicz" : "Wykonaj obliczenia"}
                         </Button>
                     </Box>
                 </Grid>
@@ -356,72 +471,159 @@ const SimpleCalculator: React.FC = () => {
         </Card>
       </Fade>
 
-      {/* --- MODAL Z WYNIKAMI --- */}
+      {/* --- MODAL Z WYNIKAMI I WYKRESAMI --- */}
+      {/* ZMIANA: maxWidth="md" zamiast "lg" - zwężenie okna */}
       <Dialog open={openResult} onClose={() => setOpenResult(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ textAlign: "center", fontWeight: "bold", bgcolor: "#f5f5f5" }}>
             Wyniki Analizy Energetycznej
         </DialogTitle>
         <DialogContent dividers>
             {result && (
-                <Stack spacing={4} sx={{ mt: 2 }}>
+                <Grid container spacing={4}>
                     
-                    {/* WSKAŹNIKI */}
-                    <Grid container spacing={2} justifyContent="center">
-                        {[
-                            { label: "Energia Użytkowa (EU)", val: result.EU, unit: "kWh/m²rok", desc: "Zapotrzebowanie budynku (Izolacja)" },
-                            { label: "Energia Końcowa (EK)", val: result.EK, unit: "kWh/m²rok", desc: "To co na rachunku (Systemy)" },
-                            { label: "Energia Pierwotna (EP)", val: result.EP, unit: "kWh/m²rok", desc: "Wpływ na środowisko (Ekologia)" }
-                        ].map((item, idx) => (
-                            <Grid item xs={12} md={4} key={idx}>
-                                <Paper elevation={3} sx={{ p: 2, textAlign: "center", borderRadius: 3, borderTop: `4px solid ${idx===2 ? getEpColor(item.val) : "#1976d2"}` }}>
-                                    <Typography variant="caption" color="text.secondary">{item.label}</Typography>
-                                    <Typography variant="h4" fontWeight="bold" my={1} color={idx===2 ? getEpColor(item.val) : "inherit"}>
+                    {/* LEWA KOLUMNA: LICZBY + WYKRESY (md=6 czyli 50%) */}
+                    <Grid item xs={12} md={6}>
+                        {/* KAFELKI Z WYNIKAMI */}
+                        <Stack direction="row" spacing={1} justifyContent="space-between" mb={4}>
+                            {[
+                                { label: "Energia Użytkowa (EU)", val: result.EU, desc: "Zapotrzebowanie" },
+                                { label: "Energia Końcowa (EK)", val: result.EK, desc: "Rachunki" },
+                                { label: "Energia Pierwotna (EP)", val: result.EP, desc: "Ekologia" }
+                            ].map((item, idx) => (
+                                <Paper key={idx} elevation={3} sx={{ p: 1, textAlign: "center", flex: 1, borderTop: `4px solid ${item.label.includes("EP") ? getEpColor(item.val) : "#1976d2"}` }}>
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>{item.label}</Typography>
+                                    <Typography variant="h6" fontWeight="bold" my={1} color={item.label.includes("EP") ? getEpColor(item.val) : "inherit"}>
                                         {item.val}
                                     </Typography>
-                                    <Typography variant="caption">{item.unit}</Typography>
                                 </Paper>
-                            </Grid>
-                        ))}
+                            ))}
+                        </Stack>
+
+                        {/* WYKRES 1: SŁUPKOWY EP */}
+                        <Typography variant="subtitle2" gutterBottom align="center">Twoje EP vs Norma WT2021</Typography>
+                        <Box sx={{ height: 200, width: "100%", mb: 2 }}>
+                             <ResponsiveContainer>
+                                <BarChart data={barData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis type="number" />
+                                    <YAxis dataKey="name" type="category" width={80} style={{ fontSize: '0.8rem' }} />
+                                    <RechartsTooltip />
+                                    <Bar dataKey="EP" fill="#8884d8" name="Wskaźnik EP [kWh/m²rok]" barSize={20}>
+                                        {barData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={index === 0 ? getEpColor(entry.EP) : '#82ca9d'} />
+                                        ))}
+                                    </Bar>
+                                </BarChart>
+                             </ResponsiveContainer>
+                        </Box>
+
+                        {/* WYKRES 2: KOŁOWY STRATY */}
+                        <Typography variant="subtitle2" gutterBottom align="center">Struktura Strat Energii</Typography>
+                        <Box sx={{ height: 220, width: "100%" }}>
+                            <ResponsiveContainer>
+                                <PieChart>
+                                    <Pie 
+                                        data={pieData} 
+                                        cx="50%" 
+                                        cy="50%" 
+                                        outerRadius={70} // Zmniejszony wykres
+                                        fill="#8884d8" 
+                                        dataKey="value" 
+                                        label={({percent}) => `${(percent * 100).toFixed(0)}%`}
+                                    >
+                                        {pieData.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <RechartsTooltip />
+                                    <Legend verticalAlign="bottom" height={36} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </Box>
                     </Grid>
 
-                    <Divider>
-                        <Chip label="REKOMENDACJE" color="primary" variant="outlined" />
-                    </Divider>
-
-                    {/* LISTA REKOMENDACJI */}
-                    <List>
-                        {result.recommendations.length > 0 ? (
-                            result.recommendations.map((rec, index) => (
-                                <Paper key={index} elevation={1} sx={{ mb: 2, borderLeft: rec.priority === 'high' ? "6px solid #d32f2f" : "6px solid #ff9800" }}>
+                    {/* PRAWA KOLUMNA: REKOMENDACJE, ZAPIS, PDF (md=6 czyli 50%) */}
+                    <Grid item xs={12} md={6} sx={{ borderLeft: { md: "1px solid #ddd" }, pl: { md: 2 } }}>
+                        
+                        <Typography variant="h6" gutterBottom color="primary">Rekomendacje Eksperta</Typography>
+                        <List dense>
+                            {result.recommendations.map((rec, index) => (
+                                <Paper key={index} variant="outlined" sx={{ mb: 1, borderLeft: rec.priority === 'high' ? "4px solid #d32f2f" : "4px solid #ff9800" }}>
                                     <ListItem>
-                                        <ListItemIcon>
-                                            {rec.priority === 'high' ? <WarningIcon color="error" /> : <CheckCircleIcon color="warning" />}
-                                        </ListItemIcon>
                                         <ListItemText 
-                                            primary={<Typography variant="h6">{rec.title}</Typography>}
-                                            secondary={rec.description}
+                                            primary={<Typography variant="subtitle2" fontWeight="bold">{rec.title}</Typography>} 
+                                            secondary={rec.description} 
                                         />
-                                        <Chip 
-                                            label={rec.priority === 'high' ? "PRIORYTET" : "ZALECANE"} 
-                                            color={rec.priority === 'high' ? "error" : "warning"} 
-                                            size="small" 
-                                        />
+                                        <Chip label={rec.priority === 'high' ? "Wysoki" : "Średni"} size="small" color={rec.priority === 'high' ? "error" : "warning"} />
                                     </ListItem>
                                 </Paper>
-                            ))
-                        ) : (
-                            <Box textAlign="center" p={2}>
-                                <CheckCircleIcon color="success" sx={{ fontSize: 50 }} />
-                                <Typography>Gratulacje! Twój budynek spełnia wysokie standardy.</Typography>
-                            </Box>
-                        )}
-                    </List>
+                            ))}
+                        </List>
 
-                </Stack>
+                        <Divider sx={{ my: 2 }} />
+
+                        {/* SEKJA ZAPISU */}
+                        <Box textAlign="center" sx={{ p: 2, bgcolor: "#e3f2fd", borderRadius: 2 }}>
+                            {saveSuccess ? (
+                                <Alert severity="success">
+                                    {editingId ? "Dane budynku zostały zaktualizowane!" : "Budynek został pomyślnie zapisany w Twoim profilu!"}
+                                </Alert>
+                            ) : (
+                                !saveMode ? (
+                                    <Button 
+                                        variant="contained" 
+                                        color="secondary" 
+                                        startIcon={<SaveIcon />}
+                                        onClick={() => setSaveMode(true)}
+                                        fullWidth
+                                    >
+                                        {editingId ? "Zapisz zmiany w tym budynku" : "Zapisz ten budynek w profilu"}
+                                    </Button>
+                                ) : (
+                                    <Stack spacing={2}>
+                                        <TextField 
+                                            label="Nazwij swój budynek" 
+                                            size="small"
+                                            value={buildingName}
+                                            onChange={(e) => setBuildingName(e.target.value)}
+                                            sx={{ bgcolor: "white" }}
+                                        />
+                                        <Stack direction="row" spacing={1}>
+                                            <Button 
+                                                variant="contained" 
+                                                color="success"
+                                                onClick={handleSaveBuilding}
+                                                disabled={saveLoading}
+                                                fullWidth
+                                            >
+                                                Zatwierdź
+                                            </Button>
+                                            <Button onClick={() => setSaveMode(false)} fullWidth>Anuluj</Button>
+                                        </Stack>
+                                    </Stack>
+                                )
+                            )}
+                        </Box>
+
+                        {/* SEKCJA PDF */}
+                        <Box textAlign="center" mt={2}>
+                            <Button 
+                                variant="outlined" 
+                                color="primary" 
+                                startIcon={<PictureAsPdfIcon />}
+                                onClick={handleDownloadPDF}
+                                fullWidth
+                            >
+                                Pobierz oficjalny raport PDF
+                            </Button>
+                        </Box>
+
+                    </Grid>
+                </Grid>
             )}
         </DialogContent>
         <DialogActions>
-            <Button onClick={() => setOpenResult(false)} variant="contained">Zamknij</Button>
+            <Button onClick={() => setOpenResult(false)} variant="outlined">Zamknij</Button>
         </DialogActions>
       </Dialog>
     </Box>

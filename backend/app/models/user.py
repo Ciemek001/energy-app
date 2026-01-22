@@ -17,5 +17,6 @@ class User(Base):
     last_name = Column(String, nullable=True)
     address = Column(String, nullable=True)
 
-    # Relacja do budynków (jeśli masz model Building, odkomentuj w przyszłości)
-    # buildings = relationship("Building", back_populates="owner")
+    # RELACJA DO BUDYNKÓW (TEGO BRAKUJE!)
+    # back_populates musi pasować do nazwy 'owner' w modelu Building
+    buildings = relationship("Building", back_populates="owner", cascade="all, delete-orphan")

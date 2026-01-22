@@ -1,6 +1,8 @@
 # backend/app/schemas/user.py
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
+# Musimy zaimportować schemat BuildingOut, żeby użyć go w UserOut
+from app.schemas.building import BuildingOut 
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -26,6 +28,8 @@ class UserUpdate(BaseModel):
 class UserOut(UserBase):
     id: int
     is_active: bool
+    # To jest kluczowa linijka, której brakowało:
+    buildings: List[BuildingOut] = [] 
 
     class Config:
         from_attributes = True

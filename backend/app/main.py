@@ -12,6 +12,13 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware  # <--- 1. Import niezbędny do CORS
 
+# --- IMPORTY BAZY DANYCH (KLUCZOWE DLA NAPRAWY BŁĘDU) ---
+from app.db.database import engine
+from app.models.material import Material
+# Importujemy też inne modele, żeby upewnić się, że SQLAlchemy je widzi
+from app.models.user import User 
+from app.models.building import Building
+
 from app.routers import (
     users,
     auth,
@@ -20,7 +27,9 @@ from app.routers import (
     heating,
     building_parameters,
     calculations,
+    simulation
 )
+
 
 app = FastAPI()
 
@@ -49,6 +58,7 @@ app.include_router(materials.router)
 app.include_router(heating.router)
 app.include_router(building_parameters.router)
 app.include_router(calculations.router)
+app.include_router(simulation.router)
 
 @app.get("/")
 def read_root():

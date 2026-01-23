@@ -14,8 +14,9 @@ from app.models.building import Building
 from app.models.building_parameters import BuildingParameters
 from app.models.calculation import Calculation
 from app.models.heating import HeatingSystem
-from app.models.material import MaterialPreset
+from app.models.material import Material
 from app.models.user import User
+from app.models.advanced_audit import AdvancedAudit
 
 from app import models
 # this is the Alembic Config object, which provides

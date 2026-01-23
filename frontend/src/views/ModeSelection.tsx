@@ -111,7 +111,7 @@ const ModeSelection: React.FC = () => {
                     title="Fizyka Budowli & Materiały"
                     desc="Szczegółowe obliczenia przegród (warstwa po warstwie). Baza materiałów i współczynniki U."
                     icon={<ConstructionIcon sx={{ fontSize: 60, color: "#9c27b0" }} />}
-                    onClick={() => navigate("/calculator-advanced")}
+                    onClick={() => navigate("/advanced-calculator")}
                     delay={200}
                 />
 

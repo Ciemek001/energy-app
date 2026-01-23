@@ -49,11 +49,12 @@ const App: React.FC = () => {
              <Route path="/mode-selection" element={<ModeSelection />} />
              
              <Route path="/calculator-simple" element={<SimpleCalculator />} />
-             <Route path="/calculator-advanced" element={<AdvancedCalculator />} />
+             <Route path="/advanced-calculator" element={<AdvancedCalculator />} />
              
              <Route path="/profile" element={<UserProfile />} />
              <Route path="/statistics" element={<Statistics />} />
              <Route path="/settings" element={<Settings />} />
+
              
              <Route path="/admin" element={<AdminPanel />} />
           </Route>

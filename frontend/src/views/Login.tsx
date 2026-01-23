@@ -3,17 +3,7 @@ import { API_URL } from "../config";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  TextField,
-  Button,
-  Stack,
-  Fade,
-  Divider,
-  Alert,
-  IconButton // <--- Import IconButton
+  Box, Card, CardContent, Typography, TextField, Button, Stack, Fade, Divider, Alert, IconButton
 } from "@mui/material";
 import LockIcon from "@mui/icons-material/Lock";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -30,32 +20,48 @@ const LoginPage: React.FC = () => {
     setLoading(true);
 
     try {
+      // WRACAMY DO JSON (zgodnie z definicją w auth.py)
+      const payload = { email, password };
+      console.log("Wysyłanie JSON:", payload);
+
       const response = await fetch(`${API_URL}/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        headers: { 
+            "Content-Type": "application/json" // <--- Backend auth.py oczekuje JSON
+        },
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
 
       if (response.ok) {
+        console.log("Zalogowano:", data);
         localStorage.setItem("token", data.access_token);
         navigate("/mode-selection");
       } else {
+        console.error("Błąd backendu:", data); // Podgląd w konsoli
+        
         if (response.status === 422) {
+            // Rozbudowana obsługa błędu walidacji Pydantic
             if (Array.isArray(data.detail)) {
-                 const msgs = data.detail.map((err: any) => err.msg).join(", ");
-                 setError("Błąd danych: " + msgs);
+                 // Wyciągamy informację, które pole jest błędne
+                 const msgs = data.detail.map((err: any) => {
+                     const field = err.loc ? err.loc[err.loc.length - 1] : 'Pole';
+                     return `${field}: ${err.msg}`;
+                 }).join(" | ");
+                 setError("Błąd walidacji: " + msgs);
             } else {
-                 setError(data.detail || "Nieprawidłowe dane (format)");
+                 setError(data.detail || "Błąd formatu danych (422).");
             }
+        } else if (response.status === 401) {
+            setError("Nieprawidłowy email lub hasło.");
         } else {
-            setError(data.detail || "Błąd logowania");
+            setError(data.detail || "Wystąpił błąd logowania.");
         }
       }
     } catch (err) {
       console.error(err);
-      setError("Brak połączenia z serwerem");
+      setError("Brak połączenia z serwerem.");
     } finally {
       setLoading(false);
     }
@@ -81,17 +87,16 @@ const LoginPage: React.FC = () => {
                 maxWidth: 400, 
                 borderRadius: 3,
                 overflow: "visible",
-                position: "relative" // Konieczne do pozycjonowania strzałki
+                position: "relative"
             }}
         >
-            {/* --- PRZYCISK POWROTU (Nowy) --- */}
             <Box sx={{ position: "absolute", top: 16, left: 16 }}>
                 <IconButton onClick={() => navigate("/")} aria-label="wróć">
                     <ArrowBackIcon />
                 </IconButton>
             </Box>
 
-          <CardContent sx={{ p: { xs: 3, sm: 4 }, pt: { xs: 6, sm: 6 } }}> {/* Zwiększony padding góra */}
+          <CardContent sx={{ p: { xs: 3, sm: 4 }, pt: { xs: 6, sm: 6 } }}>
             <Stack spacing={3} alignItems="center">
               <LockIcon sx={{ fontSize: 56, color: "#0277bd" }} />
               
@@ -149,8 +154,6 @@ const LoginPage: React.FC = () => {
                 >
                     Załóż konto
                 </Button>
-                
-                {/* Usunięto stary przycisk "Wróć do strony głównej" */}
               </Stack>
 
             </Stack>

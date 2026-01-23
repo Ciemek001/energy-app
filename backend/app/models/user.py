@@ -20,3 +20,4 @@ class User(Base):
     # RELACJA DO BUDYNKÓW (TEGO BRAKUJE!)
     # back_populates musi pasować do nazwy 'owner' w modelu Building
     buildings = relationship("Building", back_populates="owner", cascade="all, delete-orphan")
+    advanced_audits = relationship("AdvancedAudit", back_populates="user")

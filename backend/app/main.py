@@ -18,6 +18,7 @@ from app.models.material import Material
 # Importujemy też inne modele, żeby upewnić się, że SQLAlchemy je widzi
 from app.models.user import User 
 from app.models.building import Building
+from app.routers import auth, buildings, simulation, users, statistics
 
 from app.routers import (
     users,
@@ -59,6 +60,7 @@ app.include_router(heating.router)
 app.include_router(building_parameters.router)
 app.include_router(calculations.router)
 app.include_router(simulation.router)
+app.include_router(statistics.router)
 
 @app.get("/")
 def read_root():

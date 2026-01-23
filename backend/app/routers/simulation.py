@@ -7,6 +7,7 @@ from app.models.material import Material
 from app.models.advanced_audit import AdvancedAudit
 from app.models.user import User
 from app.routers.auth import get_current_user
+import copy
 
 router = APIRouter(prefix="/simulation", tags=["simulation"])
 
@@ -241,3 +242,103 @@ def update_audit(audit_id: int, data: FullSimulationRequest, db: Session = Depen
     details_msg = f"Strefa: {data.climateZone} | Źródło: {source_name} (Zaktualizowano)"
 
     return {**res, "id": audit.id, "details": details_msg}
+
+# --# --- MODEL WYNIKU MODERNIZACJI ---
+class ModernizationResult(BaseModel):
+    original_ep: float
+    new_ep: float
+    steps: List[str] # Lista kroków np. ["Docieplenie ścian", "Montaż PV"]
+    new_data: FullSimulationRequest # Zmienione dane wejściowe (żeby frontend mógł je załadować)
+
+@router.post("/modernize", response_model=ModernizationResult)
+def suggest_modernization(
+    data: FullSimulationRequest, 
+    db: Session = Depends(get_db)
+):
+    # 1. Tworzymy kopie roboczą danych, na której będziemy operować
+    current_data = copy.deepcopy(data)
+    steps = []
+    
+    # Pomocnicza funkcja do sprawdzania wyniku
+    def check_ep(d):
+        return perform_physics_calculation(d, db)["EP"]
+
+    current_ep = check_ep(current_data)
+    original_ep = current_ep
+
+    # Jeśli już spełnia normę, kończymy
+    if current_ep <= 70.0:
+        return {
+            "original_ep": original_ep,
+            "new_ep": current_ep,
+            "steps": ["Budynek już spełnia normy WT 2021!"],
+            "new_data": current_data
+        }
+
+    # --- FAZA 1: PRZEGRODY (Low Hanging Fruit) ---
+    
+    # A. Okna (Jeśli słabe, wymień na 3-szybowe)
+    if current_data.windowU > 0.9:
+        current_data.windowU = 0.9
+        steps.append("Wymiana okien na energooszczędne (U=0.9)")
+    
+    # B. Ściany (Algorytm szuka materiału ociepleniowego w bazie)
+    # Szukamy materiału, który ma w nazwie "Styropian" lub ma bardzo niską lambdę
+    insulation = db.query(Material).filter(Material.name.ilike("%styropian%")).first()
+    if not insulation:
+        # Fallback: szukamy czegokolwiek z lambda < 0.045
+        insulation = db.query(Material).filter(Material.lambda_value < 0.045).first()
+    
+    # Obliczamy przybliżone U ścian (uproszczone sprawdzanie)
+    # Jeśli EP jest tragiczne (>150), zakładamy że ściany są do bani i docieplamy
+    if current_ep > 100 and insulation:
+        # Dodajemy 15cm styropianu
+        current_data.wallLayers.append(LayerInput(materialId=insulation.id, thickness=15.0))
+        steps.append(f"Docieplenie ścian: 15cm {insulation.name}")
+        
+        # Docieplenie dachu (20cm)
+        current_data.roofLayers.append(LayerInput(materialId=insulation.id, thickness=20.0))
+        steps.append(f"Docieplenie dachu: 20cm {insulation.name}")
+
+    current_ep = check_ep(current_data)
+    if current_ep <= 70.0: return {"original_ep": original_ep, "new_ep": current_ep, "steps": steps, "new_data": current_data}
+
+    # --- FAZA 2: SYSTEMY (Gruba Rura) ---
+
+    # A. Wentylacja (Grawitacja -> Rekuperacja)
+    if current_data.ventilation == "gravity":
+        current_data.ventilation = "mechanical_recovery"
+        steps.append("Montaż wentylacji mechanicznej z odzyskiem ciepła (Rekuperacja)")
+        
+        current_ep = check_ep(current_data)
+        if current_ep <= 70.0: return {"original_ep": original_ep, "new_ep": current_ep, "steps": steps, "new_data": current_data}
+
+    # B. Źródło Ciepła (Węgiel/Gaz -> Pompa Ciepła)
+    # Jeśli źródło nie jest OZE (Pompą lub Biomasą), zmieniamy na Pompę
+    eco_sources = ["heat_pump_air", "heat_pump_ground", "biomass"]
+    if current_data.heatingSource not in eco_sources:
+        current_data.heatingSource = "heat_pump_air"
+        current_data.hasSecondaryHeating = False # Pompa zazwyczaj działa sama
+        current_data.secondaryHeatingSource = None
+        steps.append("Wymiana źródła ciepła na Pompę Ciepła (Powietrzną)")
+
+        current_ep = check_ep(current_data)
+        if current_ep <= 70.0: return {"original_ep": original_ep, "new_ep": current_ep, "steps": steps, "new_data": current_data}
+
+    # --- FAZA 3: OZE (Fotowoltaika - "Dopychanie" wyniku) ---
+    
+    # Dokładamy PV po 1 kWp aż spełni normę (limit 10 kWp żeby nie przesadzić)
+    while current_ep > 70.0 and current_data.pvPower < 10.0:
+        current_data.pvPower += 1.0
+        current_ep = check_ep(current_data)
+    
+    if current_data.pvPower > data.pvPower:
+         added_pv = current_data.pvPower - data.pvPower
+         steps.append(f"Montaż instalacji Fotowoltaicznej (dodatkowo {added_pv} kWp)")
+
+    return {
+        "original_ep": original_ep,
+        "new_ep": current_ep,
+        "steps": steps,
+        "new_data": current_data
+    }

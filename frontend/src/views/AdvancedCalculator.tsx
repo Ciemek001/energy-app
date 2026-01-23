@@ -20,6 +20,8 @@ import WbSunnyIcon from '@mui/icons-material/WbSunny';
 import SaveIcon from '@mui/icons-material/Save';
 import HomeWorkIcon from '@mui/icons-material/HomeWork';
 import WindowIcon from '@mui/icons-material/Window';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'; // Ikonka "Napraw"
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 
 import { useNavigate, useLocation } from "react-router-dom";
 import { API_URL } from "../config";
@@ -50,6 +52,9 @@ const AdvancedCalculator: React.FC = () => {
   const [calculating, setCalculating] = useState(false);
   const [result, setResult] = useState<EPResult | null>(null);
   const [openResultDialog, setOpenResultDialog] = useState(false);
+  const [modernizationResult, setModernizationResult] = useState<any>(null);
+  const [openModernizationDialog, setOpenModernizationDialog] = useState(false);
+  const [modernizing, setModernizing] = useState(false);
 
   // ID audytu (edycja)
   const [editingAuditId, setEditingAuditId] = useState<number | null>(null);
@@ -87,6 +92,42 @@ const AdvancedCalculator: React.FC = () => {
     };
     init();
   }, [location]);
+
+
+  const handleModernize = async () => {
+      setModernizing(true);
+      try {
+          const token = localStorage.getItem("token");
+          // Składamy payload tak samo jak przy obliczeniach
+          const payload = { ...formData, windowArea: Number(totalWindowArea.toFixed(2)), doorArea: Number(totalDoorArea.toFixed(2)) };
+
+          const res = await fetch(`${API_URL}/simulation/modernize`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+              body: JSON.stringify(payload)
+          });
+          
+          if (res.ok) {
+              const data = await res.json();
+              setModernizationResult(data);
+              setOpenModernizationDialog(true);
+              setOpenResultDialog(false); // Zamykamy zwykły raport, otwieramy modernizację
+          }
+      } catch (e) { console.error(e); } finally { setModernizing(false); }
+  };
+
+  const applyModernization = () => {
+      if (modernizationResult) {
+          // Nadpisujemy formularz nowymi danymi
+          setFormData(prev => ({
+              ...prev,
+              ...modernizationResult.new_data
+          }));
+          setOpenModernizationDialog(false);
+          // Opcjonalnie: od razu zapisujemy/przeliczamy
+          alert("Dane zostały zaktualizowane! Kliknij 'Generuj Raport', aby zobaczyć szczegóły.");
+      }
+  };
 
   // --- OBLICZENIA ---
   const handleCalculate = async () => {
@@ -439,6 +480,19 @@ const AdvancedCalculator: React.FC = () => {
                             >
                                 PDF
                             </Button>
+                            {/* PRZYCISK MODERNIZACJI - TYLKO JEŚLI NIE SPEŁNIA NORMY */}
+                            {!result.passed_wt2021 && (
+                                <Button
+                                    variant="contained"
+                                    color="warning"
+                                    startIcon={modernizing ? <CircularProgress size={20} color="inherit"/> : <AutoFixHighIcon />}
+                                    onClick={handleModernize}
+                                    disabled={modernizing}
+                                    sx={{ bgcolor: '#ff9800', '&:hover': { bgcolor: '#f57c00' } }}
+                                >
+                                    Plan Naprawczy
+                                </Button>
+                            )}
                             
                             <Chip label={result.passed_wt2021 ? "WT 2021 ZGODNY" : "WT 2021 NIEZGODNY"} sx={{bgcolor:'white', color: result.passed_wt2021 ? '#2e7d32' : '#d32f2f', fontWeight:'bold'}} />
                         </Stack>
@@ -495,6 +549,60 @@ const AdvancedCalculator: React.FC = () => {
                 </>
             )}
         </Dialog>
+        {/* --- MODAL MODERNIZACJI --- */}
+        <Dialog open={openModernizationDialog} onClose={() => setOpenModernizationDialog(false)} maxWidth="md" fullWidth>
+            <DialogTitle sx={{ bgcolor: "#fff3e0", py: 3 }}>
+                <Stack direction="row" alignItems="center" spacing={2}>
+                    <AutoFixHighIcon color="warning" fontSize="large"/>
+                    <Box>
+                        <Typography variant="h5" fontWeight="bold">Plan Modernizacji Energetycznej</Typography>
+                        <Typography variant="body2" color="text.secondary">Algorytm automatycznie dobrał rozwiązania spełniające WT 2021</Typography>
+                    </Box>
+                </Stack>
+            </DialogTitle>
+            <DialogContent dividers sx={{ p: 4 }}>
+                {modernizationResult && (
+                    <Grid container spacing={4}>
+                        {/* WIZUALIZACJA EP */}
+                        <Grid item xs={12}>
+                            <Paper variant="outlined" sx={{ p: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: '#f5f5f5' }}>
+                                <Box textAlign="center">
+                                    <Typography variant="caption">OBECNIE</Typography>
+                                    <Typography variant="h4" fontWeight="bold" color="error.main">{Math.round(modernizationResult.original_ep)}</Typography>
+                                    <Typography variant="caption">kWh/m²</Typography>
+                                </Box>
+                                <ArrowForwardIcon color="action" sx={{ fontSize: 40 }} />
+                                <Box textAlign="center">
+                                    <Typography variant="caption">PO MODERNIZACJI</Typography>
+                                    <Typography variant="h4" fontWeight="bold" color="success.main">{Math.round(modernizationResult.new_ep)}</Typography>
+                                    <Typography variant="caption">kWh/m²</Typography>
+                                </Box>
+                            </Paper>
+                        </Grid>
+
+                        {/* LISTA KROKÓW */}
+                        <Grid item xs={12}>
+                            <Typography variant="h6" gutterBottom>Wymagane działania:</Typography>
+                            <Stack spacing={2}>
+                                {modernizationResult.steps.map((step: string, index: number) => (
+                                    <Paper key={index} elevation={1} sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2, borderLeft: '6px solid #ff9800' }}>
+                                        <Chip label={index + 1} color="warning" size="small" />
+                                        <Typography fontWeight="500">{step}</Typography>
+                                    </Paper>
+                                ))}
+                            </Stack>
+                        </Grid>
+                    </Grid>
+                )}
+            </DialogContent>
+            <DialogActions sx={{ p: 3 }}>
+                <Button onClick={() => setOpenModernizationDialog(false)}>Anuluj</Button>
+                <Button variant="contained" color="success" startIcon={<CheckCircleIcon />} onClick={applyModernization}>
+                    Zastosuj zmiany w projekcie
+                </Button>
+            </DialogActions>
+        </Dialog>
+
     </Box>
   );
 };

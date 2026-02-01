@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Box, Card, CardContent, Typography, Button, TextField, Stack, Avatar, Divider, Fade,
-  Grid, Alert, IconButton, Chip, Paper, Tooltip, CircularProgress
+  Grid, Alert, IconButton, Chip, Paper, Tooltip, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions
 } from "@mui/material";
 
 // IKONY
@@ -19,6 +19,7 @@ import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 import ScienceIcon from '@mui/icons-material/Science';
 import AssessmentIcon from '@mui/icons-material/Assessment';
+import LockResetIcon from '@mui/icons-material/LockReset';
 
 import { API_URL } from "../config";
 import { generateEnergyReport } from "../utils/pdfGenerator";
@@ -72,6 +73,11 @@ const UserProfile: React.FC = () => {
   const [editForm, setEditForm] = useState<UserData>({
     email: "", first_name: "", last_name: "", address: "", buildings: []
   });
+
+  // --- ZMIANA HASŁA (NOWE) ---
+  const [openPasswordDialog, setOpenPasswordDialog] = useState(false);
+  const [passForm, setPassForm] = useState({ old: "", new: "", confirm: "" });
+  const [passError, setPassError] = useState("");
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -136,6 +142,43 @@ const UserProfile: React.FC = () => {
         setMessage({ type: "error", text: "Nie udało się zapisać zmian." });
       }
     } catch (err) { setMessage({ type: "error", text: "Błąd połączenia." }); }
+  };
+
+  // --- FUNKCJA ZMIANY HASŁA ---
+  const handleChangePassword = async () => {
+    setPassError("");
+    if (passForm.new !== passForm.confirm) {
+        setPassError("Nowe hasła nie są identyczne.");
+        return;
+    }
+    if (passForm.new.length < 8) {
+         setPassError("Hasło musi mieć min. 8 znaków.");
+         return;
+    }
+
+    try {
+        const token = localStorage.getItem("token");
+        const response = await fetch(`${API_URL}/users/change-password`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+                old_password: passForm.old,
+                new_password: passForm.new
+            }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || "Błąd zmiany hasła");
+
+        alert("Hasło zostało zmienione pomyślnie!");
+        setOpenPasswordDialog(false);
+        setPassForm({ old: "", new: "", confirm: "" });
+    } catch (err: any) {
+        setPassError(err.message);
+    }
   };
 
   // --- OBSŁUGA BUDYNKÓW (PROSTE) ---
@@ -270,9 +313,19 @@ const UserProfile: React.FC = () => {
                     <TextField label="Nazwisko" size="small" disabled={!isEditing} value={isEditing ? editForm.last_name : user?.last_name || ""} onChange={(e) => setEditForm({...editForm, last_name: e.target.value})} />
                     <TextField label="Adres" size="small" disabled={!isEditing} value={isEditing ? editForm.address : user?.address || ""} onChange={(e) => setEditForm({...editForm, address: e.target.value})} />
                 </Stack>
+                   {/* PRZYCISK ZMIANY HASŁA */}
+                    <Box mt={2}>
+                        <Button 
+                            variant="text" 
+                            color="warning" 
+                            startIcon={<LockResetIcon />} 
+                            onClick={() => setOpenPasswordDialog(true)}
+                        >
+                            Zmień hasło
+                        </Button>
+                    </Box>
               </Grid>
-
-              {/* PRAWA: LISTY */}
+             {/* PRAWA: LISTY */}
               <Grid item xs={12} md={8}>
                 
                 {/* 1. BUDYNKI PROSTE */}
@@ -361,6 +414,41 @@ const UserProfile: React.FC = () => {
           </CardContent>
         </Card>
       </Fade>
+      {/* --- DIALOG ZMIANY HASŁA --- */}
+      <Dialog open={openPasswordDialog} onClose={() => setOpenPasswordDialog(false)}>
+        <DialogTitle>Zmiana hasła</DialogTitle>
+        <DialogContent sx={{ minWidth: 300, mt: 1 }}>
+            <Stack spacing={2} mt={1}>
+                {passError && <Alert severity="error">{passError}</Alert>}
+                <TextField 
+                    label="Stare hasło" 
+                    type="password" 
+                    fullWidth 
+                    value={passForm.old} 
+                    onChange={(e) => setPassForm({...passForm, old: e.target.value})} 
+                />
+                <TextField 
+                    label="Nowe hasło" 
+                    type="password" 
+                    fullWidth 
+                    helperText="Min. 8 znaków + znak specjalny" 
+                    value={passForm.new} 
+                    onChange={(e) => setPassForm({...passForm, new: e.target.value})} 
+                />
+                <TextField 
+                    label="Potwierdź nowe hasło" 
+                    type="password" 
+                    fullWidth 
+                    value={passForm.confirm} 
+                    onChange={(e) => setPassForm({...passForm, confirm: e.target.value})} 
+                />
+            </Stack>
+        </DialogContent>
+        <DialogActions>
+            <Button onClick={() => setOpenPasswordDialog(false)}>Anuluj</Button>
+            <Button onClick={handleChangePassword} variant="contained" color="warning">Zatwierdź</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

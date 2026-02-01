@@ -4,8 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
 from app.db.database import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserOut, UserUpdate
-from app.utils.security import get_password_hash, generate_verification_token, verify_token
+# Zaktualizowane importy schematów (dodano UserPasswordChange)
+from app.schemas.user import UserCreate, UserOut, UserUpdate, UserPasswordChange
+# Zaktualizowane importy security (dodano verify_password)
+from app.utils.security import get_password_hash, generate_verification_token, verify_token, verify_password
 # Upewnij się, że masz ten plik lub zakomentuj import, jeśli jeszcze nie wysyłasz maili
 from app.utils.email import send_verification_email 
 from app.dependencies import get_current_user, get_current_active_admin
@@ -46,7 +48,7 @@ def create_user(
     db.commit()
     db.refresh(new_user)
 
-    # 4. Generowanie tokena i wysyłka maila (jeśli skonfigurowane)
+     #4. Generowanie tokena i wysyłka maila (jeśli skonfigurowane)
     verification_token = generate_verification_token(new_user.email)
     background_tasks.add_task(send_verification_email, new_user.email, verification_token)
 
@@ -94,9 +96,6 @@ def update_user_me(
     if user_update.address is not None:
         current_user.address = user_update.address
     
-    # Opcjonalnie zmiana hasła przez usera (wymagałaby dodatkowej logiki weryfikacji starego hasła)
-    # if user_update.password: ...
-
     db.add(current_user)
     db.commit()
     db.refresh(current_user)
@@ -186,3 +185,59 @@ def update_user_by_admin(
         raise HTTPException(status_code=500, detail="Błąd podczas zapisywania zmian")
 
     return db_user
+
+@router.patch("/{user_id}/status", response_model=UserOut)
+def update_user_status(
+    user_id: int,
+    is_active: bool,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin) # Tylko admin może to zrobić
+):
+    """
+    Szybka zmiana statusu aktywności użytkownika (dla Admina).
+    """
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Użytkownik nie znaleziony")
+    
+    # Zabezpieczenie: Nie pozwól adminowi dezaktywować samego siebie
+    if user.id == current_user.id:
+         raise HTTPException(status_code=400, detail="Nie możesz zmienić statusu własnego konta")
+
+    user.is_active = is_active
+    db.commit()
+    db.refresh(user)
+    return user
+
+# --- NOWOŚĆ: ZMIANA HASŁA PRZEZ UŻYTKOWNIKA ---
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+def change_password(
+    password_data: UserPasswordChange,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Pozwala zalogowanemu użytkownikowi zmienić hasło.
+    Wymaga podania starego hasła.
+    """
+    # 1. Weryfikacja starego hasła
+    if not verify_password(password_data.old_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Stare hasło jest nieprawidłowe."
+        )
+    
+    # 2. Sprawdzenie czy nowe hasło jest inne
+    if password_data.old_password == password_data.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nowe hasło musi różnić się od starego."
+        )
+
+    # 3. Zapisanie nowego hasła
+    current_user.hashed_password = get_password_hash(password_data.new_password)
+    db.add(current_user)
+    db.commit()
+    
+    return {"message": "Hasło zostało pomyślnie zmienione."}

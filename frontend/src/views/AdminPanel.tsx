@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Box, Typography, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Button, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Stack, Tooltip, Alert, Avatar,
-  TextField, FormControl, InputLabel, Select, MenuItem, CircularProgress, Divider
+  TextField, FormControl, InputLabel, Select, MenuItem, CircularProgress, Divider, Checkbox
 } from "@mui/material";
 // Ikony
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -134,7 +134,35 @@ const AdminPanel: React.FC = () => {
         } else { alert("Błąd generowania raportu."); }
     } catch (err) { console.error(err); } finally { setPdfLoadingId(null); }
   };
+// --- NOWA FUNKCJA: Zmiana statusu aktywności ---
+  const handleStatusChange = async (userId: number, currentStatus: boolean) => {
+    const newStatus = !currentStatus; // Odwracamy wartość
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`${API_URL}/users/${userId}/status?is_active=${newStatus}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
+      if (response.ok) {
+        // Aktualizujemy stan lokalnie, żeby checkbox "przeskoczył" od razu
+        setUsers((prevUsers) =>
+          prevUsers.map((user) =>
+            user.id === userId ? { ...user, is_active: newStatus } : user
+          )
+        );
+      } else {
+        const errorData = await response.json();
+        alert(`Nie udało się zmienić statusu: ${errorData.detail}`);
+      }
+    } catch (error) {
+      console.error("Błąd sieci:", error);
+      alert("Wystąpił błąd połączenia.");
+    }
+  };
   // --- LOGIKA PDF (ZAAWANSOWANE - NOWOŚĆ) ---
   const handleGenerateAdvancedPDF = (audit: AdvancedAudit) => {
       // Przygotowanie danych (mapowanie struktury z bazy na strukturę generatora)
@@ -254,6 +282,7 @@ const AdminPanel: React.FC = () => {
                         <TableCell>Użytkownik</TableCell>
                         <TableCell>Email</TableCell>
                         <TableCell>Rola</TableCell>
+                        <TableCell align="center">Status</TableCell>
                         <TableCell align="center">Dane</TableCell>
                         <TableCell align="right">Akcje</TableCell>
                     </TableRow>
@@ -275,6 +304,19 @@ const AdminPanel: React.FC = () => {
                             </TableCell>
                             <TableCell>{user.email}</TableCell>
                             <TableCell>{user.role === "admin" ? <Chip icon={<VerifiedUserIcon />} label="Admin" color="secondary" size="small" /> : <Chip label="User" size="small" />}</TableCell>
+                            
+                            {/* --- NOWA KOMÓRKA Z CHECKBOXEM --- */}
+                            <TableCell align="center">
+                                <Tooltip title={user.is_active ? "Konto aktywne" : "Konto nieaktywne - kliknij, aby aktywować"}>
+                                    <Checkbox
+                                        checked={user.is_active}
+                                        onChange={() => handleStatusChange(user.id, user.is_active)}
+                                        color="success"
+                                    />
+                                </Tooltip>
+                            </TableCell>
+                            {/* --------------------------------- */}
+
                             <TableCell align="center">
                                 <Stack direction="row" justifyContent="center" spacing={1}>
                                     <Tooltip title="Budynki Proste">

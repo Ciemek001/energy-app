@@ -5,6 +5,11 @@ import re
 # Musimy zaimportować schemat BuildingOut, żeby użyć go w UserOut
 from app.schemas.building import BuildingOut 
 
+# --- NOWOŚĆ: Lekki schemat do zliczania audytów ---
+# Pobieramy tylko ID, żeby nie przesyłać megabajtów danych, gdy chcemy tylko znać liczbę
+class AuditCount(BaseModel):
+    id: int
+
 class UserBase(BaseModel):
     email: EmailStr
     role: Optional[str] = "user"
@@ -37,7 +42,11 @@ class UserUpdate(BaseModel):
 class UserOut(UserBase):
     id: int
     is_active: bool
-    buildings: List[BuildingOut] = [] 
+    buildings: List[BuildingOut] = []
+    
+    # --- NOWE POLE ---
+    # Dzięki temu endpoint /users/ zwróci też listę ID audytów użytkownika
+    advanced_audits: List[AuditCount] = [] 
 
     class Config:
         from_attributes = True

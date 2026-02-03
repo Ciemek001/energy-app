@@ -130,6 +130,10 @@ const SimpleCalculator: React.FC = () => {
         alert("Wypełnij wszystkie pola liczbowe.");
         return;
     }
+    if (year < 1800 || year > 2026) {
+        alert("Rok budowy musi być w przedziale 1800 - 2026.");
+        return;
+    }
     setLoading(true);
     if (!editingId) setSaveMode(false); 
     setSaveSuccess(false);
@@ -274,6 +278,26 @@ const SimpleCalculator: React.FC = () => {
 
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28'];
 
+
+  const validateNumber = (value: string, min: number, max: number, setter: (val: number | "") => void) => {
+    if (value === "") {
+        setter("");
+        return;
+    }
+    const num = Number(value);
+    // Pozwalamy wpisywać liczby, ale blokujemy te spoza zakresu (oprócz roku, bo rok wpisuje się cyfra po cyfrze)
+    if (num < 0) return; 
+    if (num > max) return; // Blokada górna (np. max 10 pięter)
+    
+    setter(num);
+    };
+
+    const preventInvalidChars = (e: React.KeyboardEvent) => {
+    if (["e", "E", "+", "-"].includes(e.key)) {
+        e.preventDefault();
+    }
+    };
+
   return (
     <Box sx={{ minHeight: "100vh", display: "flex", justifyContent: "center", alignItems: "flex-start", background: "linear-gradient(135deg, #e8f7ff 0%, #f0fff4 100%)", p: 4 }}>
       <Fade in timeout={700}>
@@ -296,21 +320,57 @@ const SimpleCalculator: React.FC = () => {
 
             <Grid container spacing={4}>
                 {/* 1. GEOMETRIA */}
-                <Grid item xs={12}>
+                    <Grid item xs={12}>
                     <Typography variant="h6" gutterBottom sx={{ color: "#1a237e", fontWeight: 600 }}>1. Geometria i Lokalizacja</Typography>
                     <Divider sx={{ mb: 2 }} />
                     <Grid container spacing={2}>
                         <Grid item xs={12} sm={6} md={3}>
-                            <TextField label="Pow. ogrzewana (m²)" type="number" fullWidth value={area} onChange={(e) => setArea(Number(e.target.value))} />
+                            <TextField 
+                                label="Pow. ogrzewana (m²)" 
+                                type="number" 
+                                fullWidth 
+                                value={area} 
+                                onChange={(e) => validateNumber(e.target.value, 0, 10000, setArea)}
+                                onKeyDown={preventInvalidChars}
+                                helperText="Max 10000 m²"
+                            />
                         </Grid>
                         <Grid item xs={12} sm={6} md={3}>
-                            <TextField label="Rok budowy" type="number" fullWidth value={year} onChange={(e) => setYear(Number(e.target.value))} />
+                            <TextField 
+                                label="Rok budowy" 
+                                type="number" 
+                                fullWidth 
+                                value={year} 
+                                onChange={(e) => {
+                                    // Dla roku pozwalamy wpisać cokolwiek, walidacja przy Submit
+                                    const val = Number(e.target.value);
+                                    if (val >= 0 && val <= 2026) setYear(val); 
+                                }}
+                                onKeyDown={preventInvalidChars}
+                                helperText="1800 - 2026"
+                            />
                         </Grid>
                         <Grid item xs={12} sm={6} md={3}>
-                             <TextField label="Liczba mieszkańców" type="number" fullWidth value={inhabitants} onChange={(e) => setInhabitants(Number(e.target.value))} />
+                                <TextField 
+                                label="Liczba mieszkańców" 
+                                type="number" 
+                                fullWidth 
+                                value={inhabitants} 
+                                onChange={(e) => validateNumber(e.target.value, 0, 30, setInhabitants)}
+                                onKeyDown={preventInvalidChars}
+                                helperText="Max 30 osób"
+                            />
                         </Grid>
                         <Grid item xs={12} sm={6} md={3}>
-                            <TextField label="Kondygnacje" type="number" fullWidth value={floors} onChange={(e) => setFloors(Number(e.target.value))} />
+                            <TextField 
+                                label="Kondygnacje" 
+                                type="number" 
+                                fullWidth 
+                                value={floors} 
+                                onChange={(e) => validateNumber(e.target.value, 1, 10, setFloors)}
+                                onKeyDown={preventInvalidChars}
+                                helperText="Max 10 pięter"
+                            />
                         </Grid>
                         <Grid item xs={12} md={6}>
                             <FormControl fullWidth>

@@ -4,10 +4,11 @@ import {
   Grid, TextField, FormControl, InputLabel, Select, MenuItem,
   Divider, CircularProgress, Dialog, DialogTitle, DialogContent,
   DialogActions, LinearProgress, Checkbox, FormControlLabel,
-  Card, CardContent, Chip, Alert
+  Card, CardContent, Chip, Alert, Tooltip, IconButton
 } from "@mui/material";
 
 // --- IKONY ---
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import ThermostatIcon from "@mui/icons-material/Thermostat";
@@ -28,6 +29,27 @@ import { API_URL } from "../config";
 import LayerBuilder from "../components/LayerBuilder";
 import type { Layer, Material } from "../components/LayerBuilder";
 import { generateAdvancedReport } from "../utils/advancedPdfGenerator";
+
+const LOCATIONS = [
+    { name: "Woj. zachodniopomorskie", zone: "I" },
+    { name: "Woj. pomorskie", zone: "II" },
+    { name: "Woj. lubuskie", zone: "II" },
+    { name: "Woj. wielkopolskie", zone: "II" },
+    { name: "Woj. dolnośląskie", zone: "II" },
+    { name: "Woj. opolskie", zone: "II" },
+    { name: "Woj. kujawsko-pomorskie", zone: "III" },
+    { name: "Woj. łódzkie", zone: "III" },
+    { name: "Woj. mazowieckie", zone: "III" },
+    { name: "Woj. lubelskie", zone: "III" },
+    { name: "Woj. świętokrzyskie", zone: "III" },
+    { name: "Woj. śląskie", zone: "III" },
+    { name: "Woj. małopolskie", zone: "III" },
+    { name: "Woj. podkarpackie", zone: "III" },
+    { name: "Woj. warmińsko-mazurskie", zone: "IV" },
+    { name: "Woj. podlaskie", zone: "IV" },
+    { name: "Regiony górskie (Tatry, Bieszczady)", zone: "V" },
+    { name: "Biegun zimna (Suwalszczyzna)", zone: "V" }
+];
 
 const WINDOW_SIZES = { small: 1.44, medium: 2.25, large: 4.5 };
 
@@ -60,7 +82,7 @@ const AdvancedCalculator: React.FC = () => {
 
   // Domyślne dane
   const defaultFormData = {
-      area: 120, height: 2.7, floors: 1, inhabitants: 4, year: 2020, climateZone: "III",
+      area: 120, height: 2.7, floors: 1, inhabitants: 4, year: 2020, locationName: "Woj. mazowieckie",
       wallLayers: [] as Layer[], roofLayers: [] as Layer[], floorLayers: [] as Layer[],
       windowsSmall: 3, windowsMedium: 2, windowsLarge: 1, windowU: 1.0, 
       doorCount: 1, doorU: 1.3,
@@ -81,20 +103,31 @@ const AdvancedCalculator: React.FC = () => {
 
   // --- INICJALIZACJA ---
   useEffect(() => {
-    const init = async () => {
-        try {
-            const token = localStorage.getItem("token");
-            const res = await fetch(`${API_URL}/materials/`, { headers: { Authorization: `Bearer ${token}` } });
-            if(res.ok) setMaterials(await res.json());
+      const init = async () => {
+          try {
+              const token = localStorage.getItem("token");
+              const res = await fetch(`${API_URL}/materials/`, { headers: { Authorization: `Bearer ${token}` } });
+              if(res.ok) setMaterials(await res.json());
 
-            if (location.state && location.state.auditData && location.state.auditId) {
-                console.log("TRYB EDYCJI - ID:", location.state.auditId);
-                setEditingAuditId(location.state.auditId);
-                setFormData(prev => ({ ...prev, ...location.state.auditData }));
-            }
-        } catch(e) { console.error(e); } finally { setLoading(false); }
-    };
-    init();
+              if (location.state && location.state.auditData && location.state.auditId) {
+                  console.log("TRYB EDYCJI - ID:", location.state.auditId);
+                  setEditingAuditId(location.state.auditId);
+                  
+                  // Klonujemy dane do edycji
+                  const loadedData = { ...location.state.auditData };
+                  
+                  // --- NOWE: Odtwarzanie województwa ze starej strefy klimatycznej ---
+                  if (loadedData.climateZone) {
+                      const match = LOCATIONS.find(l => l.zone === loadedData.climateZone);
+                      loadedData.locationName = match ? match.name : "Woj. mazowieckie";
+                  }
+                  // ---------------------------------------------------------------------
+
+                  setFormData(prev => ({ ...prev, ...loadedData }));
+              }
+          } catch(e) { console.error(e); } finally { setLoading(false); }
+      };
+      init();
   }, [location]);
 
 
@@ -135,7 +168,16 @@ const AdvancedCalculator: React.FC = () => {
       setCalculating(true);
       try {
           const token = localStorage.getItem("token");
-          const payload = { ...formData, windowArea: Number(totalWindowArea.toFixed(2)), doorArea: Number(totalDoorArea.toFixed(2)) };
+          
+          // --- NOWE: Wyliczamy strefę (I-V) na podstawie wybranego województwa ---
+          const selectedZone = LOCATIONS.find(l => l.name === formData.locationName)?.zone || "III";
+
+          const payload = { 
+              ...formData, 
+              climateZone: selectedZone, // <--- ZMIANA: Wysyłamy wyliczoną strefę
+              windowArea: Number(totalWindowArea.toFixed(2)), 
+              doorArea: Number(totalDoorArea.toFixed(2)) 
+          };
           
           let url = `${API_URL}/simulation/calculate-ep`;
           let method = "POST";
@@ -217,12 +259,22 @@ const AdvancedCalculator: React.FC = () => {
           case 0: // Dane ogólne
              return (
                 <Grid container spacing={3}>
+                    {/* NOWY NAGŁÓWEK Z TOOLTIPEM */}
+                    <Grid item xs={12}>
+                        <Typography variant="subtitle1" sx={{ color: "primary.main", fontWeight: "bold", display: 'flex', alignItems: 'center' }}>
+                            <MapIcon sx={{ mr: 1 }} /> Podstawowe parametry
+                            <Tooltip title="Wpisz dane geometryczne budynku. Województwo automatycznie przypisze Twój dom do odpowiedniej strefy klimatycznej, co jest kluczowe przy obliczaniu strat ciepła." arrow placement="right">
+                                <IconButton size="small" sx={{ ml: 1, color: '#1976d2' }}><HelpOutlineIcon fontSize="small" /></IconButton>
+                            </Tooltip>
+                        </Typography>
+                        <Divider sx={{ mb: 2 }} />
+                    </Grid>
+                    
                     <Grid item xs={12} md={6}>
                         <TextField 
                             fullWidth label="Powierzchnia (m²)" type="number" 
                             value={formData.area} 
                             onKeyDown={preventInvalidChars}
-                            // ZMIANA: Używamy nowego handlera (max 10000)
                             onChange={e => handleNumericChange('area', e.target.value, 10000)}
                             helperText="Max 10000 m²"
                         />
@@ -232,7 +284,6 @@ const AdvancedCalculator: React.FC = () => {
                             fullWidth label="Mieszkańcy" type="number" 
                             value={formData.inhabitants} 
                             onKeyDown={preventInvalidChars}
-                            // ZMIANA: Max 30 osób
                             onChange={e => handleNumericChange('inhabitants', e.target.value, 30)}
                             helperText="Max 30 osób"
                         />
@@ -242,29 +293,32 @@ const AdvancedCalculator: React.FC = () => {
                             fullWidth label="Rok budowy" type="number" 
                             value={formData.year} 
                             onKeyDown={preventInvalidChars}
-                            // ZMIANA: Max obecny rok + zapas
                             onChange={e => handleNumericChange('year', e.target.value, 2026)}
                             helperText="1800 - 2026"
                         />
                     </Grid>
+
+                    {/* ZMIANA: SELECT WOJEWÓDZTWA ZAMIAST STREFY */}
                     <Grid item xs={12} md={6}>
                          <FormControl fullWidth>
-                            <InputLabel><MapIcon sx={{fontSize:16, mr:1}}/>Lokalizacja</InputLabel>
-                            <Select value={formData.climateZone} label="Lokalizacja" onChange={e=>setFormData({...formData, climateZone: e.target.value})}>
-                                <MenuItem value="I">I - Szczecin (Ciepło)</MenuItem>
-                                <MenuItem value="II">II - Poznań / Wrocław</MenuItem>
-                                <MenuItem value="III">III - Warszawa / Kraków</MenuItem>
-                                <MenuItem value="IV">IV - Białystok</MenuItem>
-                                <MenuItem value="V">V - Suwałki (Zimno)</MenuItem>
+                            <InputLabel><MapIcon sx={{fontSize:16, mr:1}}/>Województwo</InputLabel>
+                            <Select 
+                                value={formData.locationName || "Woj. mazowieckie"} 
+                                label="Województwo" 
+                                onChange={e=>setFormData({...formData, locationName: e.target.value})}
+                            >
+                                {LOCATIONS.map(loc => (
+                                    <MenuItem key={loc.name} value={loc.name}>{loc.name}</MenuItem>
+                                ))}
                             </Select>
                          </FormControl>
                     </Grid>
+
                     <Grid item xs={6} md={3}>
                         <TextField 
                             fullWidth label="Wysokość (m)" type="number" 
                             value={formData.height} 
                             onKeyDown={preventInvalidChars}
-                            // ZMIANA: true na końcu oznacza liczbę z przecinkiem
                             onChange={e => handleNumericChange('height', e.target.value, 20, true)}
                         />
                     </Grid>
@@ -282,150 +336,176 @@ const AdvancedCalculator: React.FC = () => {
 
           case 1: // Przegrody
              return (
-                <Grid container spacing={2}>
-                    <Grid item xs={12} md={4}><Box height="100%"><LayerBuilder title="Ściany Zewn." materials={materials} layers={formData.wallLayers} setLayers={l=>setFormData({...formData, wallLayers: l})} /></Box></Grid>
-                    <Grid item xs={12} md={4}><Box height="100%"><LayerBuilder title="Podłoga" materials={materials} layers={formData.floorLayers} setLayers={l=>setFormData({...formData, floorLayers: l})} /></Box></Grid>
-                    <Grid item xs={12} md={4}><Box height="100%"><LayerBuilder title="Dach / Strop" materials={materials} layers={formData.roofLayers} setLayers={l=>setFormData({...formData, roofLayers: l})} /></Box></Grid>
-                </Grid>
+                <Box>
+                    <Typography variant="subtitle1" sx={{ color: "primary.main", fontWeight: "bold", mb: 2, display: 'flex', alignItems: 'center' }}>
+                        <HomeWorkIcon sx={{ mr: 1 }} /> Zbuduj strukturę przegród
+                        <Tooltip title="Dodaj warstwy materiałów tak, jak zostały położone w rzeczywistości (np. Pustak + Styropian). Grubość podawaj w centymetrach." arrow placement="right">
+                            <IconButton size="small" sx={{ ml: 1, color: '#1976d2' }}><HelpOutlineIcon fontSize="small" /></IconButton>
+                        </Tooltip>
+                    </Typography>
+                    <Grid container spacing={2}>
+                        <Grid item xs={12} md={4}><Box height="100%"><LayerBuilder title="Ściany Zewn." materials={materials} layers={formData.wallLayers} setLayers={l=>setFormData({...formData, wallLayers: l})} /></Box></Grid>
+                        <Grid item xs={12} md={4}><Box height="100%"><LayerBuilder title="Podłoga" materials={materials} layers={formData.floorLayers} setLayers={l=>setFormData({...formData, floorLayers: l})} /></Box></Grid>
+                        <Grid item xs={12} md={4}><Box height="100%"><LayerBuilder title="Dach / Strop" materials={materials} layers={formData.roofLayers} setLayers={l=>setFormData({...formData, roofLayers: l})} /></Box></Grid>
+                    </Grid>
+                </Box>
              );
 
           case 2: // Stolarka
              return (
-                <Grid container spacing={4}>
-                    <Grid item xs={12} md={6}>
-                        <Typography variant="h6" color="primary">Okna</Typography>
-                        <Paper variant="outlined" sx={{ p: 2 }}>
-                            <Stack spacing={2}>
-                                {/* OKNA MAŁE */}
-                                <TextField label="Małe (~1.44 m²)" type="number" size="small" 
-                                    value={formData.windowsSmall} 
-                                    onKeyDown={preventInvalidChars}
-                                    // LIMIT: Max 50 sztuk
-                                    onChange={e => handleNumericChange('windowsSmall', e.target.value, 50)} 
-                                />
-                                {/* OKNA ŚREDNIE */}
-                                <TextField label="Średnie (~2.25 m²)" type="number" size="small" 
-                                    value={formData.windowsMedium} 
-                                    onKeyDown={preventInvalidChars}
-                                    onChange={e => handleNumericChange('windowsMedium', e.target.value, 50)} 
-                                />
-                                {/* OKNA DUŻE */}
-                                <TextField label="Duże (~4.5 m²)" type="number" size="small" 
-                                    value={formData.windowsLarge} 
-                                    onKeyDown={preventInvalidChars}
-                                    onChange={e => handleNumericChange('windowsLarge', e.target.value, 50)} 
-                                />
-                                <Divider />
-                                {/* WSPÓŁCZYNNIK OKIEN Uw */}
-                                <TextField label="Uw (W/m²K)" type="number" 
-                                    value={formData.windowU} 
-                                    onKeyDown={preventInvalidChars}
-                                    inputProps={{ step: 0.1 }}
-                                    // LIMIT: Max 5.0, true = pozwala na ułamki
-                                    onChange={e => handleNumericChange('windowU', e.target.value, 5.0, true)} 
-                                    helperText="Zakres: 0.1 - 5.0"
-                                />
-                            </Stack>
-                        </Paper>
-                        <Box mt={1} textAlign="right"><Chip label={`Razem: ${totalWindowArea.toFixed(1)} m²`} color="primary" variant="outlined"/></Box>
+                <Box>
+                    <Typography variant="subtitle1" sx={{ color: "primary.main", fontWeight: "bold", mb: 2, display: 'flex', alignItems: 'center' }}>
+                        <WindowIcon sx={{ mr: 1 }} /> Stolarka Otworowa
+                        <Tooltip title="Współczynnik U (przenikalność cieplna) znajdziesz na karcie gwarancyjnej okien i drzwi. Im niższy współczynnik, tym okna są bardziej energooszczędne." arrow placement="right">
+                            <IconButton size="small" sx={{ ml: 1, color: '#1976d2' }}><HelpOutlineIcon fontSize="small" /></IconButton>
+                        </Tooltip>
+                    </Typography>
+                    <Divider sx={{ mb: 3 }} />
+                    <Grid container spacing={4}>
+                        <Grid item xs={12} md={6}>
+                            <Typography variant="h6" color="primary">Okna</Typography>
+                            <Paper variant="outlined" sx={{ p: 2 }}>
+                                <Stack spacing={2}>
+                                    {/* OKNA MAŁE */}
+                                    <TextField label="Małe (~1.44 m²)" type="number" size="small" 
+                                        value={formData.windowsSmall} 
+                                        onKeyDown={preventInvalidChars}
+                                        // LIMIT: Max 50 sztuk
+                                        onChange={e => handleNumericChange('windowsSmall', e.target.value, 50)} 
+                                    />
+                                    {/* OKNA ŚREDNIE */}
+                                    <TextField label="Średnie (~2.25 m²)" type="number" size="small" 
+                                        value={formData.windowsMedium} 
+                                        onKeyDown={preventInvalidChars}
+                                        onChange={e => handleNumericChange('windowsMedium', e.target.value, 50)} 
+                                    />
+                                    {/* OKNA DUŻE */}
+                                    <TextField label="Duże (~4.5 m²)" type="number" size="small" 
+                                        value={formData.windowsLarge} 
+                                        onKeyDown={preventInvalidChars}
+                                        onChange={e => handleNumericChange('windowsLarge', e.target.value, 50)} 
+                                    />
+                                    <Divider />
+                                    {/* WSPÓŁCZYNNIK OKIEN Uw */}
+                                    <TextField label="Uw (W/m²K)" type="number" 
+                                        value={formData.windowU} 
+                                        onKeyDown={preventInvalidChars}
+                                        inputProps={{ step: 0.1 }}
+                                        // LIMIT: Max 5.0, true = pozwala na ułamki
+                                        onChange={e => handleNumericChange('windowU', e.target.value, 5.0, true)} 
+                                        helperText="Zakres: 0.1 - 5.0"
+                                    />
+                                </Stack>
+                            </Paper>
+                            <Box mt={1} textAlign="right"><Chip label={`Razem: ${totalWindowArea.toFixed(1)} m²`} color="primary" variant="outlined"/></Box>
+                        </Grid>
+                        
+                        <Grid item xs={12} md={6}>
+                            <Typography variant="h6" color="primary">Drzwi</Typography>
+                            <Paper variant="outlined" sx={{ p: 2 }}>
+                                <Stack spacing={2}>
+                                     {/* LICZBA DRZWI */}
+                                     <TextField label="Sztuk" type="number" 
+                                        value={formData.doorCount} 
+                                        onKeyDown={preventInvalidChars}
+                                        // LIMIT: Max 10 sztuk
+                                        onChange={e => handleNumericChange('doorCount', e.target.value, 10)} 
+                                        helperText="Max 10 sztuk"
+                                    />
+                                     {/* WSPÓŁCZYNNIK DRZWI Ud */}
+                                     <TextField label="Ud (W/m²K)" type="number" 
+                                        value={formData.doorU} 
+                                        onKeyDown={preventInvalidChars}
+                                        inputProps={{ step: 0.1 }}
+                                        onChange={e => handleNumericChange('doorU', e.target.value, 5.0, true)} 
+                                        helperText="Zakres: 0.5 - 5.0"
+                                    />
+                                </Stack>
+                            </Paper>
+                            <Box mt={1} textAlign="right"><Chip label={`Razem: ${totalDoorArea.toFixed(1)} m²`} color="primary" variant="outlined"/></Box>
+                        </Grid>
                     </Grid>
-                    
-                    <Grid item xs={12} md={6}>
-                        <Typography variant="h6" color="primary">Drzwi</Typography>
-                        <Paper variant="outlined" sx={{ p: 2 }}>
-                            <Stack spacing={2}>
-                                 {/* LICZBA DRZWI */}
-                                 <TextField label="Sztuk" type="number" 
-                                    value={formData.doorCount} 
-                                    onKeyDown={preventInvalidChars}
-                                    // LIMIT: Max 10 sztuk
-                                    onChange={e => handleNumericChange('doorCount', e.target.value, 10)} 
-                                    helperText="Max 10 sztuk"
-                                />
-                                 {/* WSPÓŁCZYNNIK DRZWI Ud */}
-                                 <TextField label="Ud (W/m²K)" type="number" 
-                                    value={formData.doorU} 
-                                    onKeyDown={preventInvalidChars}
-                                    inputProps={{ step: 0.1 }}
-                                    onChange={e => handleNumericChange('doorU', e.target.value, 5.0, true)} 
-                                    helperText="Zakres: 0.5 - 5.0"
-                                />
-                            </Stack>
-                        </Paper>
-                        <Box mt={1} textAlign="right"><Chip label={`Razem: ${totalDoorArea.toFixed(1)} m²`} color="primary" variant="outlined"/></Box>
-                    </Grid>
-                </Grid>
+                </Box>
              );
 
           case 3: // Instalacje
              return (
-                <Grid container spacing={4}>
-                    <Grid item xs={12} md={6}>
-                        <Typography variant="h6"><ThermostatIcon sx={{verticalAlign:'middle'}}/> Ogrzewanie</Typography>
-                        <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
-                            <InputLabel>Główne Źródło</InputLabel>
-                            <Select value={formData.heatingSource} label="Główne Źródło" onChange={e=>setFormData({...formData, heatingSource: e.target.value})}>
-                                <MenuItem value="gas_condensing">Kocioł Gazowy Kondensacyjny</MenuItem>
-                                <MenuItem value="heat_pump_air">Pompa Ciepła (Powietrzna)</MenuItem>
-                                <MenuItem value="heat_pump_ground">Pompa Ciepła (Gruntowa)</MenuItem>
-                                <MenuItem value="coal_eco">Ekogroszek</MenuItem>
-                                <MenuItem value="biomass">Pellet / Biomasa</MenuItem>
-                                <MenuItem value="coal">Węgiel (Stary)</MenuItem>
-                                <MenuItem value="electric">Prąd</MenuItem>
-                            </Select>
-                        </FormControl>
-                        <Paper variant="outlined" sx={{ p: 2, bgcolor: formData.hasSecondaryHeating ? "#e3f2fd" : "transparent" }}>
-                            <FormControlLabel control={<Checkbox checked={formData.hasSecondaryHeating} onChange={e => setFormData({...formData, hasSecondaryHeating: e.target.checked})} />} label={<b>Hybryda (Drugie źródło)</b>} />
-                            {formData.hasSecondaryHeating && (
-                                <FormControl fullWidth size="small" sx={{ mt: 1 }}>
-                                    <InputLabel>Dodatkowe</InputLabel>
-                                    <Select value={formData.secondaryHeatingSource} label="Dodatkowe" onChange={e=>setFormData({...formData, secondaryHeatingSource: e.target.value})}>
-                                        <MenuItem value="fireplace">Kominek</MenuItem>
-                                        <MenuItem value="electric">Grzałki</MenuItem>
-                                        <MenuItem value="gas_condensing">Gaz</MenuItem>
-                                    </Select>
-                                </FormControl>
-                            )}
-                        </Paper>
+                <Box>
+                    <Typography variant="subtitle1" sx={{ color: "primary.main", fontWeight: "bold", display: 'flex', alignItems: 'center' }}>
+                        <ThermostatIcon sx={{ mr: 1 }} /> Systemy Ogrzewania i Wentylacji
+                        <Tooltip title="Dokładne określenie źródła ciepła ma duży wpływ na wskaźnik Energii Pierwotnej (EP). Opcje OZE (fotowoltaika i solary) znacząco poprawiają końcowy wynik audytu." arrow placement="right">
+                            <IconButton size="small" sx={{ ml: 1, color: '#1976d2' }}><HelpOutlineIcon fontSize="small" /></IconButton>
+                        </Tooltip>
+                    </Typography>
+                    <Divider sx={{ mb: 3 }} />
+                    <Grid container spacing={4}>
+                        <Grid item xs={12} md={6}>
+                            <Typography variant="h6"><ThermostatIcon sx={{verticalAlign:'middle'}}/> Ogrzewanie</Typography>
+                            <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
+                                <InputLabel>Główne Źródło</InputLabel>
+                                <Select value={formData.heatingSource} label="Główne Źródło" onChange={e=>setFormData({...formData, heatingSource: e.target.value})}>
+                                    <MenuItem value="gas_condensing">Kocioł Gazowy Kondensacyjny</MenuItem>
+                                    <MenuItem value="heat_pump_air">Pompa Ciepła (Powietrzna)</MenuItem>
+                                    <MenuItem value="heat_pump_ground">Pompa Ciepła (Gruntowa)</MenuItem>
+                                    <MenuItem value="coal_eco">Ekogroszek</MenuItem>
+                                    <MenuItem value="biomass">Pellet / Biomasa</MenuItem>
+                                    <MenuItem value="coal">Węgiel (Stary)</MenuItem>
+                                    <MenuItem value="electric">Prąd</MenuItem>
+                                </Select>
+                            </FormControl>
+                            <Paper variant="outlined" sx={{ p: 2, bgcolor: formData.hasSecondaryHeating ? "#e3f2fd" : "transparent" }}>
+                                <FormControlLabel control={<Checkbox checked={formData.hasSecondaryHeating} onChange={e => setFormData({...formData, hasSecondaryHeating: e.target.checked})} />} label={<b>Hybryda (Drugie źródło)</b>} />
+                                {formData.hasSecondaryHeating && (
+                                    <FormControl fullWidth size="small" sx={{ mt: 1 }}>
+                                        <InputLabel>Dodatkowe</InputLabel>
+                                        <Select value={formData.secondaryHeatingSource} label="Dodatkowe" onChange={e=>setFormData({...formData, secondaryHeatingSource: e.target.value})}>
+                                            <MenuItem value="fireplace">Kominek</MenuItem>
+                                            <MenuItem value="electric">Grzałki</MenuItem>
+                                            <MenuItem value="gas_condensing">Gaz</MenuItem>
+                                        </Select>
+                                    </FormControl>
+                                )}
+                            </Paper>
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                             <Typography variant="h6"><WaterDropIcon sx={{verticalAlign:'middle'}}/> Woda i Wentylacja</Typography>
+                             <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
+                                <InputLabel>Profil Wody</InputLabel>
+                                <Select value={formData.waterProfile} label="Profil Wody" onChange={e=>setFormData({...formData, waterProfile: e.target.value})}>
+                                    <MenuItem value="low">Oszczędny</MenuItem>
+                                    <MenuItem value="medium">Standard</MenuItem>
+                                    <MenuItem value="high">Komfort (Wanna)</MenuItem>
+                                </Select>
+                             </FormControl>
+                             <FormControl fullWidth sx={{ mb: 3 }}>
+                                <InputLabel>Wentylacja</InputLabel>
+                                <Select value={formData.ventilation} label="Wentylacja" onChange={e=>setFormData({...formData, ventilation: e.target.value})}>
+                                    <MenuItem value="gravity">Grawitacyjna</MenuItem>
+                                    <MenuItem value="mechanical_recovery">Rekuperacja</MenuItem>
+                                </Select>
+                             </FormControl>
+                             <Typography variant="subtitle2">OZE</Typography>
+                             <Grid container spacing={2}>
+                                <Grid item xs={6}>
+                                    <TextField fullWidth label="PV (kWp)" type="number" 
+                                        value={formData.pvPower} 
+                                        onKeyDown={preventInvalidChars}
+                                        // LIMIT: Max 50 kWp (powyżej to już farma)
+                                        onChange={e => handleNumericChange('pvPower', e.target.value, 50, true)}
+                                    />
+                                </Grid>
+                                <Grid item xs={6}>
+                                    <TextField fullWidth label="Solary (m²)" type="number" 
+                                        value={formData.solarCollectorArea} 
+                                        onKeyDown={preventInvalidChars}
+                                        // LIMIT: Max 50 m2
+                                        onChange={e => handleNumericChange('solarCollectorArea', e.target.value, 50, true)}
+                                    />
+                                </Grid>
+                             </Grid>
+                        </Grid>
                     </Grid>
-                    <Grid item xs={12} md={6}>
-                         <Typography variant="h6"><WaterDropIcon sx={{verticalAlign:'middle'}}/> Woda i Wentylacja</Typography>
-                         <FormControl fullWidth sx={{ mb: 2, mt: 1 }}>
-                            <InputLabel>Profil Wody</InputLabel>
-                            <Select value={formData.waterProfile} label="Profil Wody" onChange={e=>setFormData({...formData, waterProfile: e.target.value})}>
-                                <MenuItem value="low">Oszczędny</MenuItem>
-                                <MenuItem value="medium">Standard</MenuItem>
-                                <MenuItem value="high">Komfort (Wanna)</MenuItem>
-                            </Select>
-                         </FormControl>
-                         <FormControl fullWidth sx={{ mb: 3 }}>
-                            <InputLabel>Wentylacja</InputLabel>
-                            <Select value={formData.ventilation} label="Wentylacja" onChange={e=>setFormData({...formData, ventilation: e.target.value})}>
-                                <MenuItem value="gravity">Grawitacyjna</MenuItem>
-                                <MenuItem value="mechanical_recovery">Rekuperacja</MenuItem>
-                            </Select>
-                         </FormControl>
-                         <Typography variant="subtitle2">OZE</Typography>
-                         <Grid container spacing={2}>
-                            <Grid item xs={6}>
-                                <TextField fullWidth label="PV (kWp)" type="number" 
-                                    value={formData.pvPower} 
-                                    onKeyDown={preventInvalidChars}
-                                    // LIMIT: Max 50 kWp (powyżej to już farma)
-                                    onChange={e => handleNumericChange('pvPower', e.target.value, 50, true)}
-                                />
-                            </Grid>
-                            <Grid item xs={6}>
-                                <TextField fullWidth label="Solary (m²)" type="number" 
-                                    value={formData.solarCollectorArea} 
-                                    onKeyDown={preventInvalidChars}
-                                    // LIMIT: Max 50 m2
-                                    onChange={e => handleNumericChange('solarCollectorArea', e.target.value, 50, true)}
-                                />
-                            </Grid>
-                         </Grid>
-                    </Grid>
-                </Grid>
+                </Box>
              );
 
           case 4: // Podsumowanie

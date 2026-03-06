@@ -20,6 +20,28 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, 
     PieChart, Pie, Cell 
 } from 'recharts';
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+
+const LOCATIONS = [
+    { name: "Woj. zachodniopomorskie", zone: "I" },
+    { name: "Woj. pomorskie", zone: "II" },
+    { name: "Woj. lubuskie", zone: "II" },
+    { name: "Woj. wielkopolskie", zone: "II" },
+    { name: "Woj. dolnośląskie", zone: "II" },
+    { name: "Woj. opolskie", zone: "II" },
+    { name: "Woj. kujawsko-pomorskie", zone: "III" },
+    { name: "Woj. łódzkie", zone: "III" },
+    { name: "Woj. mazowieckie", zone: "III" },
+    { name: "Woj. lubelskie", zone: "III" },
+    { name: "Woj. świętokrzyskie", zone: "III" },
+    { name: "Woj. śląskie", zone: "III" },
+    { name: "Woj. małopolskie", zone: "III" },
+    { name: "Woj. podkarpackie", zone: "III" },
+    { name: "Woj. warmińsko-mazurskie", zone: "IV" },
+    { name: "Woj. podlaskie", zone: "IV" },
+    { name: "Regiony górskie (Tatry, Bieszczady)", zone: "V" },
+    { name: "Biegun zimna (Suwalszczyzna)", zone: "V" }
+];
 
 interface Recommendation {
     title: string;
@@ -54,7 +76,7 @@ const SimpleCalculator: React.FC = () => {
   const [year, setYear] = useState<number | "">("");
   const [floors, setFloors] = useState<number | "">("");
   const [inhabitants, setInhabitants] = useState<number | "">("");
-  const [climateZone, setClimateZone] = useState("I"); 
+  const [locationName, setLocationName] = useState("Woj. mazowieckie"); 
 
   const [wallStandard, setWallStandard] = useState("brak");
   const [roofStandard, setRoofStandard] = useState("brak");
@@ -96,7 +118,10 @@ const SimpleCalculator: React.FC = () => {
 
         setArea(b.floor_area);
         setYear(b.construction_year);
-        setClimateZone(b.city || "I"); 
+
+        const savedZone = b.city || "III"; // Zabezpieczenie braku danych
+            const match = LOCATIONS.find(l => l.zone === savedZone);
+            setLocationName(match ? match.name : "Woj. mazowieckie");
 
         if (details) {
             setFloors(details.floors || 1);
@@ -123,7 +148,7 @@ const SimpleCalculator: React.FC = () => {
             }
         }
     }
-  }, [location]);
+  }, [location.state]);
 
   const handleCalculate = async () => {
     if (!area || !year || !floors || !inhabitants) {
@@ -138,12 +163,14 @@ const SimpleCalculator: React.FC = () => {
     if (!editingId) setSaveMode(false); 
     setSaveSuccess(false);
 
+    const selectedZone = LOCATIONS.find(l => l.name === locationName)?.zone || "III";
+
     const payload = {
         area: Number(area),
         year: Number(year),
         floors: Number(floors),
         inhabitants: Number(inhabitants),
-        climateZone,
+        climateZone: selectedZone,
         standards: { wall: wallStandard, roof: roofStandard, window: windowStandard, floor: floorStandard },
         systems: { 
             heatingPrimary: heatingSource, 
@@ -188,12 +215,14 @@ const SimpleCalculator: React.FC = () => {
       }
 
       setSaveLoading(true);
+
+      const selectedZone = LOCATIONS.find(l => l.name === locationName)?.zone || "III";
       
       const savePayload = {
           name: buildingName,
           area: Number(area),
           year: Number(year),
-          climate_zone: climateZone,
+          climate_zone: selectedZone,
           details: { 
               floors: Number(floors),
               inhabitants: Number(inhabitants),
@@ -249,9 +278,13 @@ const SimpleCalculator: React.FC = () => {
   const handleDownloadPDF = () => {
     if (!result) return;
     
+    // 1. Odszukujemy strefę na podstawie nazwy województwa
+    const selectedZone = LOCATIONS.find(l => l.name === locationName)?.zone || "III";
+    
     const inputData = {
         name: buildingName || "Budynek bez nazwy",
-        area, year, floors, inhabitants, climateZone,
+        area, year, floors, inhabitants, 
+        climateZone: selectedZone, // <--- ZMIANA: Przekazujemy wyliczoną strefę
         standards: { wall: wallStandard, roof: roofStandard, window: windowStandard, floor: floorStandard },
         systems: { heatingPrimary: heatingSource, ventilation: ventilation, pv: hasPV }
     };
@@ -321,7 +354,12 @@ const SimpleCalculator: React.FC = () => {
             <Grid container spacing={4}>
                 {/* 1. GEOMETRIA */}
                     <Grid item xs={12}>
-                    <Typography variant="h6" gutterBottom sx={{ color: "#1a237e", fontWeight: 600 }}>1. Geometria i Lokalizacja</Typography>
+                    <Typography variant="h6" gutterBottom sx={{ color: "#1a237e", fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                        1. Geometria i Lokalizacja
+                        <Tooltip title="Powierzchnię i rok budowy wpisz na podstawie projektu. Wybór województwa pozwala aplikacji przypisać Twój dom do odpowiedniej strefy klimatycznej (I-V) wg polskich norm, co wpływa na obliczenia strat ciepła w zimie." arrow placement="right">
+                            <IconButton size="small" sx={{ ml: 1, color: '#1976d2' }}><HelpOutlineIcon fontSize="small" /></IconButton>
+                        </Tooltip>
+                    </Typography>
                     <Divider sx={{ mb: 2 }} />
                     <Grid container spacing={2}>
                         <Grid item xs={12} sm={6} md={3}>
@@ -374,13 +412,13 @@ const SimpleCalculator: React.FC = () => {
                         </Grid>
                         <Grid item xs={12} md={6}>
                             <FormControl fullWidth>
-                                <InputLabel id="zone-label">Strefa Klimatyczna</InputLabel>
-                                <Select labelId="zone-label" value={climateZone} label="Strefa Klimatyczna" onChange={(e) => setClimateZone(e.target.value)}>
-                                    <MenuItem value="I">I - Zachód (Szczecin, Wrocław)</MenuItem>
-                                    <MenuItem value="II">II - Centrum (Poznań, Łódź)</MenuItem>
-                                    <MenuItem value="III">III - Wschód (Warszawa, Kielce)</MenuItem>
-                                    <MenuItem value="IV">IV - Północ (Białystok, Olsztyn)</MenuItem>
-                                    <MenuItem value="V">V - Góry (Zakopane)</MenuItem>
+                                <InputLabel id="zone-label">Województwo</InputLabel>
+                                <Select labelId="zone-label" value={locationName} label="Województwo" onChange={(e) => setLocationName(e.target.value)}>
+                                    {LOCATIONS.map(loc => (
+                                        <MenuItem key={loc.name} value={loc.name}>
+                                            {loc.name}
+                                        </MenuItem>
+                                    ))}
                                 </Select>
                             </FormControl>
                         </Grid>
@@ -389,7 +427,12 @@ const SimpleCalculator: React.FC = () => {
 
                 {/* 2. IZOLACJA */}
                 <Grid item xs={12}>
-                    <Typography variant="h6" sx={{ color: "#1a237e", fontWeight: 600 }}>2. Standard Izolacji</Typography>
+                    <Typography variant="h6" sx={{ color: "#1a237e", fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                        2. Standard Izolacji
+                        <Tooltip title="Wybierz przybliżony standard izolacji. Brak ocieplenia lub stara izolacja znacząco zwiększają wskaźnik zapotrzebowania na energię użytkową (EU). Jeśli nie znasz dokładnych danych, pozostaw wariant 'Standardowe'." arrow placement="right">
+                            <IconButton size="small" sx={{ ml: 1, color: '#1976d2' }}><HelpOutlineIcon fontSize="small" /></IconButton>
+                        </Tooltip>
+                    </Typography>
                     <Divider sx={{ mb: 2, mt: 1 }} />
                     <Grid container spacing={2}>
                         <Grid item xs={12} md={6}>
@@ -437,7 +480,12 @@ const SimpleCalculator: React.FC = () => {
 
                 {/* 3. INSTALACJE */}
                 <Grid item xs={12}>
-                    <Typography variant="h6" gutterBottom sx={{ color: "#1a237e", fontWeight: 600 }}>3. Instalacje i Źródła Ciepła</Typography>
+                    <Typography variant="h6" gutterBottom sx={{ color: "#1a237e", fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                        3. Instalacje i Źródła Ciepła
+                        <Tooltip title="Główne źródło ogrzewania (np. pompa ciepła, kocioł na węgiel) drastycznie wpływa na zużycie energii pierwotnej (EP). Dodanie paneli fotowoltaicznych (OZE) pokryje część zapotrzebowania, co mocno poprawi klasę energetyczną budynku." arrow placement="right">
+                            <IconButton size="small" sx={{ ml: 1, color: '#1976d2' }}><HelpOutlineIcon fontSize="small" /></IconButton>
+                        </Tooltip>
+                    </Typography>
                     <Divider sx={{ mb: 2 }} />
                     <Grid container spacing={3}>
                         <Grid item xs={12} md={6}>

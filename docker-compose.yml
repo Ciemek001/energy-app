@@ -1,37 +1,41 @@
-version: "3.9"
+version: '3.8'
+
 services:
-  postgres:
+  db:
     image: postgres:15
+    restart: always
     environment:
-      POSTGRES_USER: energy_user
-      POSTGRES_PASSWORD: energy_pass
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password123
       POSTGRES_DB: energy_db
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-
+      - postgres_data:/var/lib/postgresql/data
   backend:
     build: ./backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    volumes:
-      - ./backend:/app
+    restart: always
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://energy_user:energy_pass@postgres:5432/energy_db
     depends_on:
-      - postgres
+      - db
+    environment:
+      DATABASE_URL: postgresql://admin:password123@db:5432/energy_db
+      SECRET_KEY: "super_tajny_klucz_do_jwt"
+      MAIL_USERNAME: energy.app001@gmail.com
+      MAIL_PASSWORD: cyxbfsgsulzrvblb
+      MAIL_FROM: energy.app001@gmail.com
+      MAIL_PORT: 587
+      MAIL_SERVER: smtp.gmail.com
 
+  # 3. FRONTEND
   frontend:
     build: ./frontend
-    volumes:
-      - ./frontend:/app
+    restart: always
     ports:
-      - "5173:5173"
-    command: npm run dev
+      - "3000:80" # Mapujemy port 3000 Twojego komputera na 80 w kontenerze
     depends_on:
       - backend
 
 volumes:
-  pgdata:
+  postgres_data:

@@ -1,25 +1,30 @@
 import os
-# Twoje ustawienia środowiskowe dla Windows/Postgres
+from dotenv import load_dotenv
+
+# Ustawienia środowiskowe (zostawiamy, nie szkodzą w Dockerze, a pomagają na Windows)
 os.environ['HOME'] = 'C:\\'
 os.environ['USERPROFILE'] = 'C:\\'
 os.environ['PGPASSFILE'] = 'C:\\pgpass.conf'
-
-from dotenv import load_dotenv
 
 # Wczytaj zmienne z pliku .env
 load_dotenv()
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware  # <--- 1. Import niezbędny do CORS
+from fastapi.middleware.cors import CORSMiddleware
 
-# --- IMPORTY BAZY DANYCH (KLUCZOWE DLA NAPRAWY BŁĘDU) ---
-from app.db.database import engine
-from app.models.material import Material
-# Importujemy też inne modele, żeby upewnić się, że SQLAlchemy je widzi
+# --- IMPORTY BAZY DANYCH ---
+# Musimy zaimportować 'Base', aby mieć dostęp do metadanych tabel
+from app.db.database import engine, Base 
+
+# --- IMPORTY MODELI (KLUCZOWE) ---
+# SQLAlchemy musi "widzieć" te klasy przed startem, żeby utworzyć tabele
 from app.models.user import User 
 from app.models.building import Building
-from app.routers import auth, buildings, simulation, users, statistics
+from app.models.material import Material
+# Jeśli masz inne modele w innych plikach, dodaj je tutaj, np.:
+# from app.models.audit import AdvancedAudit 
 
+# --- IMPORTY ROUTERÓW ---
 from app.routers import (
     users,
     auth,
@@ -28,30 +33,34 @@ from app.routers import (
     heating,
     building_parameters,
     calculations,
-    simulation
+    simulation,
+    statistics
 )
 
+# --- TWORZENIE TABEL W BAZIE DANYCH ---
+# To jest linia, której brakowało! Tworzy tabele przy starcie aplikacji.
+Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+app = FastAPI(title="Energy App")
 
-# <--- 2. Konfiguracja CORS (To naprawia błąd połączenia z Frontendem)
+# --- KONFIGURACJA CORS ---
 origins = [
-    "http://localhost:5173",    # Domyślny port Vite (Twój frontend)
+    "http://localhost:5173",    # Vite lokalnie
     "http://127.0.0.1:5173",
-    "http://localhost:3000",    # Alternatywny port Reacta (na wszelki wypadek)
-    "http://localhost:80",      # Jeśli testujesz lokalnie na porcie 80
+    "http://localhost:3000",    # Docker Frontend (zmapowany na 3000)
+    "http://127.0.0.1:3000",
+    "http://localhost:80",      # Docker Frontend (wewnętrzny port 80)
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,      # Zezwól na zapytania z tych adresów
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],        # Zezwól na wszystkie metody (POST, GET, OPTIONS itd.)
-    allow_headers=["*"],        # Zezwól na wszystkie nagłówki
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-# ---> Koniec konfiguracji CORS
 
-# Dołączanie routerów
+# --- DOŁĄCZANIE ROUTERÓW ---
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(buildings.router)
@@ -64,4 +73,4 @@ app.include_router(statistics.router)
 
 @app.get("/")
 def read_root():
-    return {"message": "Hello, FastAPI!"}
+    return {"message": "Energy App API is running!"}

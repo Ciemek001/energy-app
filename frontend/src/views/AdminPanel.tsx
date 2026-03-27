@@ -47,15 +47,18 @@ interface User {
   id: number;
   email: string;
   role: string;
+  is_active: boolean; // <--- Upewnij się, że to masz po poprzednich zmianach
   first_name?: string;
   last_name?: string;
   address?: string;
   buildings?: Building[];
+  advanced_audits?: any[]; // <--- DODAJ TO (tablica audytów)
 }
 
 const AdminPanel: React.FC = () => {
   const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null);
   
   // NOWY STAN: MATERIAŁY DO PDF
@@ -82,7 +85,16 @@ const AdminPanel: React.FC = () => {
     if (!token) { navigate("/login"); return; }
 
     try {
-      // 1. Użytkownicy
+        // 1. Pobierz ID aktualnie zalogowanego admina (NOWE)
+      const meResponse = await fetch(`${API_URL}/users/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (meResponse.ok) {
+        const meData = await meResponse.json();
+        setCurrentUserId(meData.id);
+      }
+
+      // 2. Użytkownicy
       const response = await fetch(`${API_URL}/users/`, { 
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -93,7 +105,7 @@ const AdminPanel: React.FC = () => {
         navigate("/profile");
       }
 
-      // 2. Materiały (potrzebne do generowania PDF Audytów)
+      // 3. Materiały (potrzebne do generowania PDF Audytów)
       const matRes = await fetch(`${API_URL}/materials/`, { 
           headers: { Authorization: `Bearer ${token}` } 
       });
@@ -219,6 +231,12 @@ const AdminPanel: React.FC = () => {
 
   // --- LOGIKA USERA I BUDYNKÓW ---
   const handleDeleteUser = async (userId: number) => {
+    // ZABEZPIECZENIE LOGICZNE
+    if (userId === currentUserId) {
+        alert("Nie możesz usunąć własnego konta administratora!");
+        return;
+    }
+
     if (!window.confirm("Usunąć użytkownika i WSZYSTKIE dane?")) return;
     const token = localStorage.getItem("token");
     try {
@@ -318,21 +336,50 @@ const AdminPanel: React.FC = () => {
                             {/* --------------------------------- */}
 
                             <TableCell align="center">
-                                <Stack direction="row" justifyContent="center" spacing={1}>
-                                    <Tooltip title="Budynki Proste">
-                                        <Chip icon={<HomeWorkIcon/>} label={user.buildings?.length || 0} variant="outlined" size="small" onClick={() => { setSelectedUserForBuildings(user); setOpenBuildingsDialog(true); }} />
-                                    </Tooltip>
-                                    <Tooltip title="Audyty Zaawansowane">
-                                        <IconButton size="small" color="primary" onClick={() => handleOpenAudits(user)}>
-                                            <ScienceIcon fontSize="small"/>
-                                        </IconButton>
-                                    </Tooltip>
-                                </Stack>
-                            </TableCell>
+    <Stack direction="row" justifyContent="center" spacing={1}>
+        {/* BUDYNKI PROSTE */}
+        <Tooltip title="Budynki Proste">
+            <Chip 
+                icon={<HomeWorkIcon/>} 
+                label={user.buildings?.length || 0} 
+                variant="outlined" 
+                size="small" 
+                onClick={() => { setSelectedUserForBuildings(user); setOpenBuildingsDialog(true); }} 
+            />
+        </Tooltip>
+        
+        {/* --- AUDYTY ZAAWANSOWANE (ZMIANA) --- */}
+        <Tooltip title="Audyty Zaawansowane">
+            <Chip 
+                icon={<ScienceIcon/>} 
+                // Tutaj wyświetlamy długość tablicy advanced_audits
+                label={user.advanced_audits?.length || 0} 
+                variant="outlined" 
+                size="small"
+                color="primary" // Możesz dać inny kolor dla odróżnienia
+                onClick={() => handleOpenAudits(user)}
+                clickable // Żeby kursor zmieniał się w rączkę
+            />
+        </Tooltip>
+        {/* ------------------------------------ */}
+    </Stack>
+</TableCell>
+
                             <TableCell align="right">
                                 <Stack direction="row" justifyContent="flex-end" spacing={1}>
                                     <Tooltip title="Edytuj dane"><IconButton color="default" onClick={() => handleOpenEdit(user)}><EditIcon /></IconButton></Tooltip>
-                                    <Tooltip title="Usuń użytkownika"><IconButton color="error" onClick={() => handleDeleteUser(user.id)}><DeleteIcon /></IconButton></Tooltip>
+                                    <Tooltip title={user.id === currentUserId ? "Nie możesz usunąć siebie" : "Usuń użytkownika"}>
+            <span> {/* Span jest potrzebny, żeby Tooltip działał na disabled button */}
+                <IconButton 
+                    color="error" 
+                    onClick={() => handleDeleteUser(user.id)}
+                    disabled={user.id === currentUserId} // Blokada, jeśli to Ty
+                >
+                    <DeleteIcon />
+                </IconButton>
+            </span>
+        </Tooltip>
+        {/* --------------------------------------- */}
                                 </Stack>
                             </TableCell>
                         </TableRow>

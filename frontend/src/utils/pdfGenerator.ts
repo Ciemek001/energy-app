@@ -56,9 +56,8 @@ export const generateEnergyReport = (inputData: any, results: any) => {
   if (fontBase64) {
       // Dodajemy plik do wirtualnego systemu plików PDF
       doc.addFileToVFS("CustomFont.ttf", fontBase64);
-      // Rejestrujemy czcionkę pod nazwą "CustomFont"
       doc.addFont("CustomFont.ttf", "CustomFont", "normal");
-      // Ustawiamy ją jako aktywną
+      doc.addFont("CustomFont.ttf", "CustomFont", "bold");
       doc.setFont("CustomFont");
   } else {
       console.error("Błąd: Pusty ciąg Base64 czcionki!");
@@ -110,7 +109,7 @@ export const generateEnergyReport = (inputData: any, results: any) => {
         font: "CustomFont", 
         fontStyle: 'normal' 
     },
-    columnStyles: { 0: { fontStyle: 'bold', width: 80 } }
+    columnStyles: { 0: { fontStyle: 'normal', width: 80 } }
   });
 
   // --- 2. WYNIKI ---
@@ -136,8 +135,8 @@ export const generateEnergyReport = (inputData: any, results: any) => {
         fontStyle: 'normal'
     },
     columnStyles: { 
-        0: { fontStyle: 'bold' },
-        1: { fontStyle: 'bold', textColor: [200, 0, 0] }
+        0: { fontStyle: 'normal' },
+        1: { fontStyle: 'normal', textColor: [200, 0, 0] }
     }
   });
 
@@ -165,8 +164,8 @@ export const generateEnergyReport = (inputData: any, results: any) => {
             fontStyle: 'normal'
         },
         columnStyles: {
-            0: { fontStyle: 'bold', width: 30 },
-            1: { fontStyle: 'bold', width: 60 }
+            0: { fontStyle: 'normal', width: 30 },
+            1: { fontStyle: 'normal', width: 60 }
         }
       });
   }

@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # 1. BAZA DANYCH
   db:
     image: postgres:15
     restart: always
@@ -10,11 +9,9 @@ services:
       POSTGRES_PASSWORD: password123
       POSTGRES_DB: energy_db
     ports:
-      - "5432:5432" # Dostęp do bazy z poziomu Windowsa
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
-  # 2. BACKEND
   backend:
     build: ./backend
     restart: always
@@ -23,10 +20,8 @@ services:
     depends_on:
       - db
     environment:
-      # Kluczowe: 'db' to nazwa serwisu zdefiniowana wyżej
       DATABASE_URL: postgresql://admin:password123@db:5432/energy_db
       SECRET_KEY: "super_tajny_klucz_do_jwt"
-      # Opcjonalnie dane do maila, jeśli chcesz żeby działały w Dockerze:
       MAIL_USERNAME: energy.app001@gmail.com
       MAIL_PASSWORD: cyxbfsgsulzrvblb
       MAIL_FROM: energy.app001@gmail.com

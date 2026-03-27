@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { fontBase64 } from "./fonts";
 
 // Definicje typów (skrócone, zgodne z Twoim kodem)
 interface Layer {
@@ -19,6 +20,10 @@ interface AuditData {
 export const generateAdvancedReport = (data: AuditData) => {
     const doc = new jsPDF();
     const { input, result, materials } = data;
+
+    doc.addFileToVFS("CustomFont.ttf", fontBase64);
+    doc.addFont("CustomFont.ttf", "CustomFont", "normal");
+    doc.setFont("CustomFont"); // Ustawia polskie znaki dla doc.text()
 
     // Helper: Znajdź nazwę materiału po ID
     const getMatName = (id: number) => {
@@ -76,54 +81,79 @@ export const generateAdvancedReport = (data: AuditData) => {
         head: [['Szacunkowy Koszt Roczny', 'Moc Szczytowa (Projektowa)']],
         body: [[`${result.estimated_cost_pln} PLN`, `${result.peak_power_kw} kW`]],
         theme: 'grid',
-        headStyles: { fillColor: [255, 143, 0] }, // Pomarańczowy
-        styles: { halign: 'center', fontSize: 12, fontStyle: 'bold' }
+        headStyles: { 
+            fillColor: [255, 143, 0],
+            font: "CustomFont",       
+            fontStyle: "normal"       
+        },
+        styles: { 
+            halign: 'center', 
+            fontSize: 12, 
+            font: "CustomFont",       
+            fontStyle: 'normal' 
+        }
     });
 
     // --- 3. BILANS STRAT ---
-    doc.text("BILANS STRAT CIEPLA", 14, (doc as any).lastAutoTable.finalY + 10);
+    doc.text("BILANS STRAT CIEPŁA", 14, (doc as any).lastAutoTable.finalY + 10);
     autoTable(doc, {
         startY: (doc as any).lastAutoTable.finalY + 12,
         head: [['Element', 'Strata (W/K)']],
         body: [
-            ['Sciany Zewnetrzne', result.heat_loss_walls],
+            ['Ściany Zewnetrzne', result.heat_loss_walls],
             ['Okna i Drzwi', result.heat_loss_windows],
             ['Wentylacja', result.heat_loss_ventilation]
         ],
         theme: 'striped',
-        headStyles: { fillColor: [25, 118, 210] } // Niebieski
+        headStyles: { 
+            fillColor: [25, 118, 210],
+            font: "CustomFont",       
+            fontStyle: "normal"       
+        },
+        styles: {
+            font: "CustomFont",       
+            fontStyle: "normal"       
+        }
     });
 
     // --- 4. DANE BUDYNKU I INSTALACJE ---
     const finalY = (doc as any).lastAutoTable.finalY + 10;
-    doc.text("PARAMETRY WEJSCIOWE", 14, finalY);
+    doc.text("PARAMETRY WEJŚCIOWE", 14, finalY);
 
     autoTable(doc, {
         startY: finalY + 2,
         head: [['Parametr', 'Wartosc']],
         body: [
-            ['Powierzchnia (Af)', `${input.area} m2`],
+            ['Powierzchnia (Af)', `${input.area} m²`],
             ['Lokalizacja', `Strefa ${input.climateZone}`],
             ['Rok budowy', input.year],
-            ['Mieszkancy', input.inhabitants],
-            ['Zrodlo Ciepla', input.heatingSource.toUpperCase().replace("_", " ") + (input.hasSecondaryHeating ? " (+ Hybryda)" : "")],
+            ['Mieszkańcy', input.inhabitants],
+            ['Źródło Ciepła', input.heatingSource.toUpperCase().replace("_", " ") + (input.hasSecondaryHeating ? " (+ Hybryda)" : "")],
             ['Wentylacja', input.ventilation === 'gravity' ? "Grawitacyjna" : "Rekuperacja"],
             ['Fotowoltaika (PV)', `${input.pvPower} kWp`],
-            ['Kolektory Sloneczne', `${input.solarCollectorArea} m2`]
+            ['Kolektory Słoneczne', `${input.solarCollectorArea} m²`]
         ],
         theme: 'plain',
-        styles: { fontSize: 9 }
+        headStyles: {
+            font: "CustomFont",       
+            fontStyle: "normal"       
+        },
+        styles: { 
+            fontSize: 9,
+            font: "CustomFont",       
+            fontStyle: "normal"       
+        }
     });
 
     // --- 5. SZCZEGÓŁY PRZEGRÓD (TABELA WARSTW) ---
     // Musimy to zrobić na nowej stronie, jeśli brakuje miejsca, autotable samo o to zadba.
-    doc.text("STRUKTURA PRZEGROD", 14, (doc as any).lastAutoTable.finalY + 10);
+    doc.text("STRUKTURA PRZEGRÓD", 14, (doc as any).lastAutoTable.finalY + 10);
     
     // Przygotowanie danych do tabeli przegród
     const layersRows: any[] = [];
     
     const addLayerSection = (title: string, layers: Layer[]) => {
-        layersRows.push([{ content: title, colSpan: 3, styles: { fillColor: [238, 238, 238], fontStyle: 'bold' } }]);
+        layersRows.push([{ content: title, colSpan: 3, styles: { fillColor: [238, 238, 238], fontStyle: 'normal' } }]);
         if (layers.length === 0) {
             layersRows.push(['Brak zdefiniowanych warstw', '-', '-']);
         } else {
@@ -133,17 +163,26 @@ export const generateAdvancedReport = (data: AuditData) => {
         }
     };
 
-    addLayerSection("SCIANY ZEWNETRZNE", input.wallLayers);
+    addLayerSection("ŚCIANY ZEWNETRZNE", input.wallLayers);
     addLayerSection("DACH / STROP", input.roofLayers);
-    addLayerSection("PODLOGA NA GRUNCIE", input.floorLayers);
+    addLayerSection("PODŁOGA NA GRUNCIE", input.floorLayers);
 
     autoTable(doc, {
         startY: (doc as any).lastAutoTable.finalY + 12,
-        head: [['Material', 'Grubosc', '']],
+        head: [['Materiał', 'Grubość', '']],
         body: layersRows,
-        theme: 'grid'
+        theme: 'grid',
+        // --- DODAJ TEN BLOK ZE STYLAMI ---
+        styles: { 
+            font: "CustomFont", 
+            fontStyle: "normal" 
+        },
+        headStyles: {
+            font: "CustomFont",
+            fontStyle: "normal"
+        }
+        // ---------------------------------
     });
-
     // --- STOPKA ---
     const pageCount = doc.getNumberOfPages();
     for(let i = 1; i <= pageCount; i++) {
